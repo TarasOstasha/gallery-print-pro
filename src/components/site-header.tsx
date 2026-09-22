@@ -11,8 +11,8 @@ export function SiteHeader({ dark = false }: { dark?: boolean }) {
         Atelier Nord
       </Link>
       <nav className="flex items-center gap-5">
-        <Link to="/" className="label-mono hidden sm:block">
-          Upload
+        <Link to="/print" className="label-mono hidden sm:block">
+          Order prints
         </Link>
         <Link to="/admin" className="label-mono hidden sm:block">
           Admin

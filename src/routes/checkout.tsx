@@ -132,7 +132,7 @@ function Checkout() {
         <SiteHeader />
         <div className="mx-auto max-w-xl px-5 py-24 text-center">
           <h1 className="font-display text-5xl">Your cart is empty</h1>
-          <Link to="/" className="mt-6 inline-block underline">
+          <Link to="/print" className="mt-6 inline-block underline">
             Upload photos
           </Link>
         </div>

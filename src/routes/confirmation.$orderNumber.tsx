@@ -69,7 +69,7 @@ function Confirmation() {
           )}
         </div>
         <Link
-          to="/"
+          to="/print"
           className="mt-8 inline-flex rounded-full bg-foreground px-7 py-4 label-mono text-white"
         >
           Upload more photos

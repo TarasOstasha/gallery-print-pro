@@ -16,7 +16,7 @@ function CartPage() {
           <div className="mt-16 rounded-3xl border bg-card p-12 text-center">
             <p className="font-display text-3xl italic">Your cart is waiting for a photograph.</p>
             <Link
-              to="/"
+              to="/print"
               className="mt-6 inline-flex rounded-full bg-foreground px-6 py-4 label-mono text-white"
             >
               Upload photos
@@ -85,7 +85,7 @@ function CartPage() {
               >
                 Proceed to checkout
               </Link>
-              <Link to="/" className="mt-4 block text-center text-xs text-white/60 underline">
+              <Link to="/print" className="mt-4 block text-center text-xs text-white/60 underline">
                 Continue shopping
               </Link>
             </aside>

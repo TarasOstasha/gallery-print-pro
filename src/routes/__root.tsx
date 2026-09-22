@@ -28,7 +28,7 @@ function NotFoundComponent() {
             to="/"
             className="label-mono inline-flex items-center justify-center rounded-full bg-foreground px-5 py-3 text-primary-foreground transition-colors duration-300 hover:bg-primary"
           >
-            Back to gallery
+            Back home
           </Link>
         </div>
       </div>
@@ -77,11 +77,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Atelier Nord — Event Photography Prints" },
+      { title: "Atelier Nord — Professional Photo Prints" },
       {
         name: "description",
         content:
-          "Browse event photography and order archival prints, shipped or collected from the studio.",
+          "Upload your photos and order archival lustre prints online — shipped or studio pickup.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
