@@ -7,6 +7,9 @@ export type CartItem = {
   photoNumber: string;
   photoUrl: string;
   eventSlug: string;
+  /** Original upload dimensions for print quality checks */
+  photoWidth?: number;
+  photoHeight?: number;
   productId: string;
   productName: string;
   productVariantId: string;
@@ -35,13 +38,28 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (raw) setItems(JSON.parse(raw) as CartItem[]);
-    } catch {
-      /* ignore malformed cart */
-    }
-    setHydrated(true);
+    void (async () => {
+      try {
+        const raw = window.localStorage.getItem(STORAGE_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw) as CartItem[];
+        const { getCustomerPhotoPreviewUrl } = await import("@/lib/customer-photos");
+        const refreshed = await Promise.all(
+          parsed.map(async (item) => {
+            if (!item.photoId.startsWith("photo-n07-")) {
+              const url = await getCustomerPhotoPreviewUrl(item.photoId);
+              if (url) return { ...item, photoUrl: url };
+            }
+            return item;
+          }),
+        );
+        setItems(refreshed);
+      } catch {
+        /* ignore malformed cart */
+      } finally {
+        setHydrated(true);
+      }
+    })();
   }, []);
 
   useEffect(() => {

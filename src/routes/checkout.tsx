@@ -5,29 +5,127 @@ import { SiteHeader } from "@/components/site-header";
 import { shippingMethods, studio } from "@/lib/catalog";
 import { useCart } from "@/lib/cart";
 import { formatCents } from "@/lib/money";
+import { getCustomerPhotoOriginalBase64 } from "@/lib/customer-photos";
+import { saveLocalOrder } from "@/lib/local-orders";
+import { placeOrder } from "@/orders.functions";
+import { toast } from "sonner";
+
 export const Route = createFileRoute("/checkout")({ component: Checkout });
+
 const input =
   "mt-2 w-full rounded-xl border bg-card px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary";
+
 function Checkout() {
   const { items, subtotalCents, clear } = useCart();
   const nav = useNavigate();
   const [fulfillment, setFulfillment] = useState<"shipping" | "studio_pickup">("shipping");
   const [shipping, setShipping] = useState("standard");
+  const [submitting, setSubmitting] = useState(false);
   const ship =
     fulfillment === "shipping" ? shippingMethods.find((m) => m.code === shipping)!.priceCents : 0;
   const tax = Math.round((subtotalCents + ship) * studio.taxRate);
   const total = subtotalCents + ship + tax;
-  function submit(e: FormEvent<HTMLFormElement>) {
+
+  async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const number = String(Math.floor(10000 + Math.random() * 89999));
-    const data = Object.fromEntries(new FormData(e.currentTarget));
-    sessionStorage.setItem(
-      `order-${number}`,
-      JSON.stringify({ number, fulfillment, shipping, total, data, items }),
-    );
-    clear();
-    void nav({ to: "/confirmation/$orderNumber", params: { orderNumber: number } });
+    setSubmitting(true);
+    try {
+      const data = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, string>;
+      const photoIds = [...new Set(items.map((i) => i.photoId))];
+      const photoFiles = [];
+      for (const id of photoIds) {
+        const file = await getCustomerPhotoOriginalBase64(id);
+        const item = items.find((i) => i.photoId === id)!;
+        if (!file) {
+          toast.error(`Missing original file for ${item.photoNumber}`);
+          setSubmitting(false);
+          return;
+        }
+        photoFiles.push({
+          photoId: id,
+          photoNumber: item.photoNumber,
+          base64: file.base64,
+          mimeType: file.mimeType,
+          fileName: file.fileName,
+          width: item.photoWidth ?? 0,
+          height: item.photoHeight ?? 0,
+        });
+      }
+
+      const payload = {
+        fulfillment,
+        shippingMethodCode: fulfillment === "shipping" ? shipping : null,
+        customer: {
+          firstName: data.firstName!,
+          lastName: data.lastName!,
+          email: data.email!,
+          phone: data.phone ?? "",
+        },
+        shippingAddress:
+          fulfillment === "shipping"
+            ? {
+                address: data.address!,
+                apartment: data.apartment,
+                city: data.city!,
+                state: data.state!,
+                zip: data.zip!,
+                country: data.country ?? "United States",
+              }
+            : null,
+        items: items.map((i) => ({
+          photoId: i.photoId,
+          photoNumber: i.photoNumber,
+          productVariantId: i.productVariantId,
+          sizeLabel: i.sizeLabel,
+          quantity: i.quantity,
+        })),
+        photoFiles,
+        totals: { subtotalCents, shippingCents: ship, taxCents: tax, totalCents: total },
+      };
+
+      const result = await placeOrder({ data: payload });
+
+      if (result.persisted === "local") {
+        saveLocalOrder({
+          orderNumber: result.orderNumber,
+          accessToken: result.accessToken,
+          fulfillment,
+          shippingMethodCode: fulfillment === "shipping" ? shipping : null,
+          subtotalCents,
+          shippingCents: ship,
+          taxCents: tax,
+          totalCents: total,
+          paymentStatus: "paid",
+          orderStatus: "new",
+          createdAt: new Date().toISOString(),
+          customer: payload.customer,
+          shippingAddress: fulfillment === "shipping" ? data : null,
+          items,
+        });
+      } else {
+        sessionStorage.setItem(
+          `order-${result.orderNumber}`,
+          JSON.stringify({
+            number: result.orderNumber,
+            accessToken: result.accessToken,
+            fulfillment,
+            total: result.totalCents,
+            data,
+            items,
+          }),
+        );
+      }
+
+      clear();
+      void nav({ to: "/confirmation/$orderNumber", params: { orderNumber: result.orderNumber } });
+    } catch (err) {
+      console.error(err);
+      toast.error("Could not place order. Try again.");
+    } finally {
+      setSubmitting(false);
+    }
   }
+
   if (!items.length)
     return (
       <main>
@@ -35,7 +133,7 @@ function Checkout() {
         <div className="mx-auto max-w-xl px-5 py-24 text-center">
           <h1 className="font-display text-5xl">Your cart is empty</h1>
           <Link to="/" className="mt-6 inline-block underline">
-            Return to gallery
+            Upload photos
           </Link>
         </div>
       </main>
@@ -44,7 +142,7 @@ function Checkout() {
     <main className="min-h-screen">
       <SiteHeader />
       <form
-        onSubmit={submit}
+        onSubmit={(e) => void submit(e)}
         className="mx-auto grid max-w-6xl gap-10 px-5 py-12 md:px-10 lg:grid-cols-[1fr_360px]"
       >
         <section>
@@ -141,7 +239,7 @@ function Checkout() {
           <div className="mt-5 max-h-56 space-y-3 overflow-auto">
             {items.map((i) => (
               <div key={i.key} className="flex gap-3">
-                <img src={i.photoUrl} className="h-14 w-14 rounded-lg object-cover" />
+                <img src={i.photoUrl} alt="" className="h-14 w-14 rounded-lg object-cover" />
                 <div className="min-w-0 flex-1">
                   <strong className="block text-sm">{i.photoNumber}</strong>
                   <span className="text-xs text-white/55">
@@ -168,14 +266,19 @@ function Checkout() {
             Payment is Stripe-ready. This preview safely creates a test order without collecting
             card details.
           </div>
-          <button className="mt-5 w-full rounded-full bg-white px-5 py-4 label-mono text-black">
-            Place test order
+          <button
+            type="submit"
+            disabled={submitting}
+            className="mt-5 w-full rounded-full bg-white px-5 py-4 label-mono text-black disabled:opacity-60"
+          >
+            {submitting ? "Placing order…" : "Place test order"}
           </button>
         </aside>
       </form>
     </main>
   );
 }
+
 function Field({
   name,
   label,
@@ -198,6 +301,7 @@ function Field({
     </label>
   );
 }
+
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between">

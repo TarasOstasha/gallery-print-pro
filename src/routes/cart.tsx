@@ -19,7 +19,7 @@ function CartPage() {
               to="/"
               className="mt-6 inline-flex rounded-full bg-foreground px-6 py-4 label-mono text-white"
             >
-              Explore gallery
+              Upload photos
             </Link>
           </div>
         ) : (

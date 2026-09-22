@@ -1,34 +1,24 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { CalendarDays, ChevronRight, Image, Package, Settings, ShoppingBag } from "lucide-react";
-import { photos, product } from "@/lib/catalog";
+import { useEffect, useState } from "react";
+import { ChevronRight, Package, Settings, ShoppingBag, Upload } from "lucide-react";
+import { product } from "@/lib/catalog";
+import { formatCents } from "@/lib/money";
+import { listLocalOrders, updateLocalOrderStatus, type LocalOrderRecord } from "@/lib/local-orders";
+
 export const Route = createFileRoute("/admin")({ component: Admin });
-const orders = [
-  {
-    number: "10252",
-    customer: "Elena Rossi",
-    date: "Today, 10:42",
-    total: "$74.47",
-    fulfillment: "STUDIO PICKUP",
-    status: "New",
-  },
-  {
-    number: "10251",
-    customer: "Marcus Lee",
-    date: "Yesterday",
-    total: "$118.75",
-    fulfillment: "SHIPPING",
-    status: "Processing",
-  },
-  {
-    number: "10250",
-    customer: "Ava Williams",
-    date: "Sep 18",
-    total: "$42.08",
-    fulfillment: "STUDIO PICKUP",
-    status: "Ready for pickup",
-  },
-];
+
 function Admin() {
+  const [orders, setOrders] = useState<LocalOrderRecord[]>([]);
+
+  useEffect(() => {
+    setOrders(listLocalOrders());
+  }, []);
+
+  function markReady(orderNumber: string) {
+    updateLocalOrderStatus(orderNumber, "ready_for_pickup");
+    setOrders(listLocalOrders());
+  }
+
   return (
     <main className="min-h-screen bg-[#111317] text-white">
       <header className="flex h-20 items-center justify-between border-b border-white/10 px-5 md:px-8">
@@ -36,102 +26,112 @@ function Admin() {
           Atelier Nord <span className="font-sans text-xs text-white/35">/ Admin</span>
         </Link>
         <Link to="/" className="label-mono text-white/60">
-          View gallery
+          View storefront
         </Link>
       </header>
       <div className="grid md:grid-cols-[220px_1fr]">
         <aside className="hidden min-h-[calc(100vh-5rem)] border-r border-white/10 p-4 md:block">
           <nav className="space-y-1">
             <Nav icon={<ShoppingBag />} label="Orders" active />
-            <Nav icon={<CalendarDays />} label="Galleries" />
+            <Nav icon={<Upload />} label="Customer uploads" />
             <Nav icon={<Package />} label="Products" />
             <Nav icon={<Settings />} label="Settings" />
           </nav>
         </aside>
         <section className="p-5 md:p-10">
-          <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
-            <div>
-              <p className="label-mono text-primary">Dashboard</p>
-              <h1 className="mt-3 font-display text-5xl">Good afternoon.</h1>
-            </div>
-            <button className="rounded-full bg-white px-5 py-3 label-mono text-black">
-              Create gallery
-            </button>
+          <div>
+            <p className="label-mono text-primary">Dashboard</p>
+            <h1 className="mt-3 font-display text-5xl">Print orders</h1>
+            <p className="mt-3 max-w-xl text-sm text-white/50">
+              Orders from customer uploads. When Supabase service role and storage are connected,
+              orders persist to the database automatically.
+            </p>
           </div>
           <div className="mt-10 grid gap-3 sm:grid-cols-3">
-            <Stat label="Open orders" value="12" />
-            <Stat label="Published gallery" value="1" />
-            <Stat label="Print products" value={String(product.variants.length)} />
+            <Stat label="Open orders" value={String(orders.filter((o) => o.orderStatus === "new").length)} />
+            <Stat label="Total orders" value={String(orders.length)} />
+            <Stat label="Print sizes" value={String(product.variants.length)} />
           </div>
           <div className="mt-10 overflow-hidden rounded-2xl border border-white/10 bg-white/[.03]">
-            <div className="flex items-center justify-between border-b border-white/10 p-5">
-              <div>
-                <p className="label-mono text-white/45">Recent orders</p>
-                <h2 className="mt-2 font-display text-3xl">Production queue</h2>
-              </div>
+            <div className="border-b border-white/10 p-5">
+              <p className="label-mono text-white/45">Recent orders</p>
+              <h2 className="mt-2 font-display text-3xl">Production queue</h2>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] text-left text-sm">
-                <thead className="text-[10px] uppercase tracking-widest text-white/35">
-                  <tr>
-                    <th className="p-5">Order</th>
-                    <th>Customer</th>
-                    <th>Fulfillment</th>
-                    <th>Status</th>
-                    <th>Total</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {orders.map((o) => (
-                    <tr key={o.number} className="border-t border-white/10">
-                      <td className="p-5">
-                        <strong>#{o.number}</strong>
-                        <small className="mt-1 block text-white/40">{o.date}</small>
-                      </td>
-                      <td>{o.customer}</td>
-                      <td>
-                        <span
-                          className={`rounded-full px-3 py-1 font-mono text-[10px] ${o.fulfillment === "SHIPPING" ? "bg-blue-400/15 text-blue-300" : "bg-amber-400/15 text-amber-300"}`}
-                        >
-                          {o.fulfillment}
-                        </span>
-                      </td>
-                      <td>{o.status}</td>
-                      <td>{o.total}</td>
-                      <td>
-                        <ChevronRight size={16} />
-                      </td>
+            {orders.length === 0 ? (
+              <p className="p-8 text-sm text-white/45">No orders yet. Place a test order from checkout.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[720px] text-left text-sm">
+                  <thead className="text-[10px] uppercase tracking-widest text-white/35">
+                    <tr>
+                      <th className="p-5">Order</th>
+                      <th>Customer</th>
+                      <th>Prints</th>
+                      <th>Fulfillment</th>
+                      <th>Status</th>
+                      <th>Total</th>
+                      <th></th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div className="mt-10 grid gap-4 lg:grid-cols-2">
-            <div className="rounded-2xl border border-white/10 p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="label-mono text-white/45">Gallery</p>
-                  <h3 className="mt-2 font-display text-3xl">Runway 7, 2026</h3>
-                </div>
-                <Image className="text-primary" />
+                  </thead>
+                  <tbody>
+                    {orders.map((o) => (
+                      <tr key={o.orderNumber} className="border-t border-white/10">
+                        <td className="p-5">
+                          <strong>#{o.orderNumber}</strong>
+                          <small className="mt-1 block text-white/40">
+                            {new Date(o.createdAt).toLocaleString()}
+                          </small>
+                        </td>
+                        <td>
+                          {o.customer.firstName} {o.customer.lastName}
+                          <small className="block text-white/40">{o.customer.email}</small>
+                        </td>
+                        <td>
+                          <div className="flex gap-1">
+                            {o.items.slice(0, 3).map((item) => (
+                              <img
+                                key={item.key}
+                                src={item.photoUrl}
+                                alt=""
+                                className="h-10 w-10 rounded object-cover"
+                              />
+                            ))}
+                          </div>
+                        </td>
+                        <td>
+                          <span
+                            className={`rounded-full px-3 py-1 font-mono text-[10px] ${o.fulfillment === "shipping" ? "bg-blue-400/15 text-blue-300" : "bg-amber-400/15 text-amber-300"}`}
+                          >
+                            {o.fulfillment === "shipping" ? "SHIPPING" : "STUDIO PICKUP"}
+                          </span>
+                        </td>
+                        <td>{o.orderStatus.replaceAll("_", " ")}</td>
+                        <td>{formatCents(o.totalCents)}</td>
+                        <td>
+                          {o.fulfillment === "studio_pickup" && o.orderStatus === "new" && (
+                            <button
+                              type="button"
+                              onClick={() => markReady(o.orderNumber)}
+                              className="rounded-full border border-white/20 px-3 py-1 text-[10px] uppercase tracking-wider"
+                            >
+                              Ready
+                            </button>
+                          )}
+                          <ChevronRight size={16} className="ml-2 inline opacity-40" />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <p className="mt-6 text-sm text-white/50">Published · {photos.length} photographs</p>
-            </div>
-            <div className="rounded-2xl border border-white/10 p-5">
-              <p className="label-mono text-white/45">Quick action</p>
-              <h3 className="mt-2 font-display text-3xl">Pickup orders</h3>
-              <button className="mt-6 rounded-full border border-white/20 px-5 py-3 label-mono">
-                Mark ready for pickup
-              </button>
-            </div>
+            )}
           </div>
         </section>
       </div>
     </main>
   );
 }
+
 function Nav({
   icon,
   label,
@@ -143,6 +143,7 @@ function Nav({
 }) {
   return (
     <button
+      type="button"
       className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm ${active ? "bg-white text-black" : "text-white/55 hover:bg-white/5"}`}
     >
       <span className="[&>svg]:h-4 [&>svg]:w-4">{icon}</span>
@@ -150,6 +151,7 @@ function Nav({
     </button>
   );
 }
+
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[.03] p-5">

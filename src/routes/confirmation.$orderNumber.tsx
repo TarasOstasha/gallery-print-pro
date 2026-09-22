@@ -72,7 +72,7 @@ function Confirmation() {
           to="/"
           className="mt-8 inline-flex rounded-full bg-foreground px-7 py-4 label-mono text-white"
         >
-          Back to gallery
+          Upload more photos
         </Link>
       </section>
     </main>
