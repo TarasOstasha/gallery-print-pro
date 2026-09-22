@@ -5,7 +5,7 @@ import { product } from "@/lib/catalog";
 import { formatCents } from "@/lib/money";
 import { listLocalOrders, updateLocalOrderStatus, type LocalOrderRecord } from "@/lib/local-orders";
 
-export const Route = createFileRoute("/admin")({ component: Admin });
+export const Route = createFileRoute("/_authenticated/admin")({ component: Admin });
 
 function Admin() {
   const [orders, setOrders] = useState<LocalOrderRecord[]>([]);
