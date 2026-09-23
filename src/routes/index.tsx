@@ -49,7 +49,7 @@ function HomePage() {
             </h1>
             <p className="mt-6 max-w-md text-base leading-7 text-white/65">
               Upload your images, choose an archival lustre size, and order prints shipped to you or
-              ready for studio pickup — crafted to last.
+              ready for studio pickup  crafted to last.
             </p>
             <div className="mt-10 flex flex-wrap items-center gap-4">
               <Link
@@ -102,7 +102,7 @@ function HomePage() {
               icon={<Sparkles className="text-primary" />}
               step="02"
               title="Choose size"
-              body="Pick from professional print sizes — from 4×6 keepsakes to large 20×30 wall pieces."
+              body="Pick from professional print sizes  from 4×6 keepsakes to large 20×30 wall pieces."
             />
             <Step
               icon={<Package className="text-primary" />}
@@ -178,7 +178,7 @@ function HomePage() {
               </li>
               <li className="flex gap-3">
                 <Package className="mt-0.5 shrink-0 text-primary" size={18} />
-                Each order ties your file to the exact size you selected — ready for production.
+                Each order ties your file to the exact size you selected  ready for production.
               </li>
             </ul>
             <Link

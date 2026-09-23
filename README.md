@@ -96,10 +96,10 @@ Example:
 
 Photographic Print
 
-4x6 — $X
-5x7 — $X
-8x10 — $X
-11x14 — $X
+4x6  $X
+5x7  $X
+8x10  $X
+11x14  $X
 
 The selected gallery photograph should remain visible while configuring the print.
 
@@ -144,7 +144,7 @@ IMG_1150
 11x14 Print
 Qty 1
 
-CHECKOUT — VERY IMPORTANT
+CHECKOUT  VERY IMPORTANT
 
 Checkout must have TWO fulfillment methods.
 
@@ -160,7 +160,7 @@ Pick up my finished prints directly from the photography studio.
 
 Only ONE option can be selected.
 
-OPTION 1 — SHIPPING
+OPTION 1  SHIPPING
 
 If customer selects SHIPPING:
 
@@ -196,7 +196,7 @@ Total
 
 The architecture should allow shipping rates to later come from an external shipping/fulfillment API instead of being permanently hardcoded.
 
-OPTION 2 — STUDIO PICKUP
+OPTION 2  STUDIO PICKUP
 
 If customer selects STUDIO PICKUP:
 
@@ -227,7 +227,7 @@ Shipping cost = $0.
 Order summary should show:
 
 Subtotal
-Studio Pickup — FREE
+Studio Pickup  FREE
 Tax
 Total
 
@@ -506,7 +506,7 @@ Continue developing this project in the [Lovable editor](https://lovable.dev/pro
 
 ## Development
 
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+Prefer working locally? You need Node.js and npm  [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
 
 ```sh
 git clone <this-repository-url>

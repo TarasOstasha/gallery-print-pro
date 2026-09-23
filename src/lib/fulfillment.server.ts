@@ -5,7 +5,7 @@
  * tables. Checkout only calls `getFulfillmentProvider().submitOrder(...)` and
  * stores the returned provider name + reference on the order row, so a real lab
  * (WHCC, another lab, an in-house pipeline) can be added later by adding one
- * provider object below — no checkout or schema rewrite required.
+ * provider object below  no checkout or schema rewrite required.
  */
 
 export type FulfillmentLineItem = {

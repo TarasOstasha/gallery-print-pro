@@ -5,9 +5,9 @@ import { supabase } from "@/integrations/supabase/client";
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: "Studio sign in — Dynasty Pix" },
+      { title: "Studio sign in  Dynasty Pix" },
       { name: "description", content: "Sign in to manage galleries, print products and orders." },
-      { property: "og:title", content: "Studio sign in — Dynasty Pix" },
+      { property: "og:title", content: "Studio sign in  Dynasty Pix" },
       {
         property: "og:description",
         content: "Sign in to manage galleries, print products and orders.",

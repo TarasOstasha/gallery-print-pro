@@ -135,7 +135,7 @@ function Admin() {
                           <td>
                             {customer
                               ? `${customer.first_name} ${customer.last_name}`
-                              : "—"}
+                              : ""}
                             <small className="block text-white/40">{customer?.email}</small>
                           </td>
                           <td>
