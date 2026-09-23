@@ -211,7 +211,7 @@ function HomePage() {
       </section>
 
       <footer className="flex flex-col gap-3 border-t bg-background px-5 py-8 text-xs text-muted-foreground md:flex-row md:items-center md:justify-between md:px-10">
-        <span>© 2026 Atelier Nord Photography</span>
+        <span>© 2026 Dynasty Pix</span>
         <span className="label-mono">{studio.cityLine}</span>
       </footer>
     </main>

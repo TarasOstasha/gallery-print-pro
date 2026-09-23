@@ -80,18 +80,21 @@ export const updateOrderStatus = createServerFn({ method: "POST" })
         .select("studio_name, address_line1, city, state, postal_code")
         .limit(1)
         .maybeSingle();
-      if (order?.customers?.email) {
-        const { sendEmail, readyForPickupEmail } = await import("./email.server");
-        await sendEmail(
-          readyForPickupEmail({
-            to: order.customers.email,
-            firstName: order.customers.first_name,
-            orderNumber: order.order_number,
-            studioAddress: studio
-              ? `${studio.studio_name}, ${studio.address_line1}, ${studio.city}, ${studio.state} ${studio.postal_code}`
-              : "our studio",
-          }),
-        );
+      if (order?.customers) {
+        const customer = Array.isArray(order.customers) ? order.customers[0] : order.customers;
+        if (customer?.email) {
+          const { sendEmail, readyForPickupEmail } = await import("./email.server");
+          await sendEmail(
+            readyForPickupEmail({
+              to: customer.email,
+              firstName: customer.first_name,
+              orderNumber: order.order_number,
+              studioAddress: studio
+                ? `${studio.studio_name}, ${studio.address_line1}, ${studio.city}, ${studio.state} ${studio.postal_code}`
+                : "our studio",
+            }),
+          );
+        }
       }
     }
 

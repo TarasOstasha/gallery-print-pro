@@ -5,9 +5,9 @@ import { supabase } from "@/integrations/supabase/client";
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: "Studio sign in — Atelier Nord" },
+      { title: "Studio sign in — Dynasty Pix" },
       { name: "description", content: "Sign in to manage galleries, print products and orders." },
-      { property: "og:title", content: "Studio sign in — Atelier Nord" },
+      { property: "og:title", content: "Studio sign in — Dynasty Pix" },
       {
         property: "og:description",
         content: "Sign in to manage galleries, print products and orders.",
@@ -50,8 +50,12 @@ function AuthPage() {
   return (
     <main className="grid min-h-screen place-items-center px-5 py-16">
       <div className="w-full max-w-md">
-        <Link to="/" className="font-display text-2xl">
-          Atelier Nord
+        <Link to="/" className="inline-flex items-center" aria-label="Dynasty Pix home">
+          <img
+            src="/images/dynasty-pix-logo.png"
+            alt="Dynasty Pix"
+            className="h-10 w-auto rounded-sm bg-black px-2 py-1"
+          />
         </Link>
         <p className="label-mono mt-10 text-primary">Studio access</p>
         <h1 className="mt-3 font-display text-5xl">

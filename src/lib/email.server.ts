@@ -30,7 +30,7 @@ export function orderConfirmationEmail(params: {
   return {
     to: params.to,
     subject: `Order #${params.orderNumber} confirmed`,
-    body: `Hi ${params.firstName},\n\nThank you for your order. Order #${params.orderNumber} totalling $${total} is now in production.\n\n${closing}\n\nAtelier Nord`,
+    body: `Hi ${params.firstName},\n\nThank you for your order. Order #${params.orderNumber} totalling $${total} is now in production.\n\n${closing}\n\nDynasty Pix`,
   };
 }
 
@@ -43,6 +43,6 @@ export function readyForPickupEmail(params: {
   return {
     to: params.to,
     subject: `Order #${params.orderNumber} is ready for pickup`,
-    body: `Hi ${params.firstName},\n\nYour prints for order #${params.orderNumber} are ready to collect at:\n\n${params.studioAddress}\n\nAtelier Nord`,
+    body: `Hi ${params.firstName},\n\nYour prints for order #${params.orderNumber} are ready to collect at:\n\n${params.studioAddress}\n\nDynasty Pix`,
   };
 }

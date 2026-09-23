@@ -1,14 +1,19 @@
 import { Link } from "@tanstack/react-router";
 import { ShoppingBag } from "lucide-react";
 import { useCart } from "@/lib/cart";
+
 export function SiteHeader({ dark = false }: { dark?: boolean }) {
   const { count } = useCart();
   return (
     <header
       className={`flex h-20 items-center justify-between px-5 md:px-10 ${dark ? "text-white" : "text-foreground"}`}
     >
-      <Link to="/" className="font-display text-2xl tracking-tight">
-        Atelier Nord
+      <Link to="/" className="flex items-center" aria-label="Dynasty Pix home">
+        <img
+          src="/images/dynasty-pix-logo.png"
+          alt="Dynasty Pix"
+          className={`h-9 w-auto md:h-11 ${dark ? "" : "rounded-sm bg-black px-2 py-1"}`}
+        />
       </Link>
       <nav className="flex items-center gap-5">
         <Link to="/print" className="label-mono hidden sm:block">

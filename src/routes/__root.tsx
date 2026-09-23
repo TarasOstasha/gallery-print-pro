@@ -77,7 +77,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Atelier Nord — Professional Photo Prints" },
+      { title: "Dynasty Pix — Professional Photo Prints" },
       {
         name: "description",
         content:

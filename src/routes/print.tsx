@@ -174,7 +174,7 @@ function UploadPrintHome() {
       )}
 
       <footer className="flex flex-col gap-3 border-t px-5 py-8 text-xs text-muted-foreground md:flex-row md:items-center md:justify-between md:px-10">
-        <span>© 2026 Atelier Nord Photography</span>
+        <span>© 2026 Dynasty Pix</span>
         <span className="label-mono">Photographic prints · Made to order</span>
       </footer>
 

@@ -60,7 +60,7 @@ export const product = {
   })),
 };
 export const studio = {
-  name: "Atelier Nord",
+  name: "Dynasty Pix",
   address: "118 Rue Saint-Maur",
   cityLine: "Paris, IDF 75011",
   country: "France",

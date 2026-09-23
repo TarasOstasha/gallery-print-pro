@@ -9,7 +9,10 @@
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "db:migrate": "node scripts/apply-supabase-migrations.mjs",
+    "db:admin": "node scripts/create-admin.mjs",
+    "db:e2e-order": "node scripts/e2e-order.mjs"
   },
   "overrides": {
     "rolldown": "1.2.1"

@@ -8,7 +8,8 @@ export const placeOrder = createServerFn({ method: "POST" })
     try {
       return await createOrderInDatabase(data);
     } catch (error) {
-      console.warn("[placeOrder] Falling back to local order storage:", error);
+      console.error("[placeOrder] Database order failed:", error);
+      // Last-resort offline fallback so checkout is never a dead end in demos.
       return buildLocalOrder(data);
     }
   });
