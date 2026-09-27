@@ -592,6 +592,17 @@ async function upsertCustomerPhoto(
   `;
   if (existing[0]?.id) {
     await sql`
+      update public.photos
+      set original_file_name = coalesce(${file.fileName}, original_file_name),
+          original_path = coalesce(${canUseStorage ? storagePath : null}, original_path),
+          preview_url = case
+            when ${canUseStorage} then ${previewPath}
+            else preview_url
+          end,
+          deleted_at = null
+      where id = ${existing[0].id}::uuid
+    `;
+    await sql`
       insert into public.print_file_blobs (photo_id, mime_type, file_name, content)
       values (
         ${existing[0].id}::uuid,
@@ -609,12 +620,13 @@ async function upsertCustomerPhoto(
 
   const inserted = await sql<{ id: string }[]>`
     insert into public.photos (
-      event_id, photo_number, preview_url, original_path, width, height
+      event_id, photo_number, preview_url, original_path, original_file_name, width, height
     ) values (
       ${CUSTOMER_UPLOAD_EVENT_ID}::uuid,
       ${file.photoNumber},
       ${canUseStorage ? previewPath : `blob://${file.photoId}`},
       ${canUseStorage ? storagePath : null},
+      ${file.fileName},
       ${file.width || null},
       ${file.height || null}
     )

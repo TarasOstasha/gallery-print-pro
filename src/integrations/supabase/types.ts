@@ -289,9 +289,11 @@ export type Database = {
         Row: {
           caption: string | null
           created_at: string
+          deleted_at: string | null
           event_id: string
           height: number | null
           id: string
+          original_file_name: string | null
           original_path: string | null
           photo_number: string
           preview_url: string
@@ -302,9 +304,11 @@ export type Database = {
         Insert: {
           caption?: string | null
           created_at?: string
+          deleted_at?: string | null
           event_id: string
           height?: number | null
           id?: string
+          original_file_name?: string | null
           original_path?: string | null
           photo_number: string
           preview_url: string
@@ -315,9 +319,11 @@ export type Database = {
         Update: {
           caption?: string | null
           created_at?: string
+          deleted_at?: string | null
           event_id?: string
           height?: number | null
           id?: string
+          original_file_name?: string | null
           original_path?: string | null
           photo_number?: string
           preview_url?: string

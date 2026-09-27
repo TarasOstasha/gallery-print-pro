@@ -17,6 +17,8 @@ import { Route as CheckoutRouteImport } from './routes/checkout'
 import { Route as PrintRouteImport } from './routes/print'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as ConfirmationOrderNumberRouteImport } from './routes/confirmation.$orderNumber'
+import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin.index'
+import { Route as AuthenticatedAdminOrdersOrderNumberRouteImport } from './routes/_authenticated/admin.orders.$orderNumber'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -57,6 +59,17 @@ const ConfirmationOrderNumberRoute = ConfirmationOrderNumberRouteImport.update({
   path: '/confirmation/$orderNumber',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthenticatedAdminRoute,
+} as any)
+const AuthenticatedAdminOrdersOrderNumberRoute =
+  AuthenticatedAdminOrdersOrderNumberRouteImport.update({
+    id: '/orders/$orderNumber',
+    path: '/orders/$orderNumber',
+    getParentRoute: () => AuthenticatedAdminRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -64,8 +77,10 @@ export interface FileRoutesByFullPath {
   '/cart': typeof CartRoute
   '/checkout': typeof CheckoutRoute
   '/print': typeof PrintRoute
-  '/admin': typeof AuthenticatedAdminRoute
+  '/admin': typeof AuthenticatedAdminRouteWithChildren
   '/confirmation/$orderNumber': typeof ConfirmationOrderNumberRoute
+  '/admin/': typeof AuthenticatedAdminIndexRoute
+  '/admin/orders/$orderNumber': typeof AuthenticatedAdminOrdersOrderNumberRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -73,8 +88,9 @@ export interface FileRoutesByTo {
   '/cart': typeof CartRoute
   '/checkout': typeof CheckoutRoute
   '/print': typeof PrintRoute
-  '/admin': typeof AuthenticatedAdminRoute
   '/confirmation/$orderNumber': typeof ConfirmationOrderNumberRoute
+  '/admin': typeof AuthenticatedAdminIndexRoute
+  '/admin/orders/$orderNumber': typeof AuthenticatedAdminOrdersOrderNumberRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -84,8 +100,10 @@ export interface FileRoutesById {
   '/cart': typeof CartRoute
   '/checkout': typeof CheckoutRoute
   '/print': typeof PrintRoute
-  '/_authenticated/admin': typeof AuthenticatedAdminRoute
+  '/_authenticated/admin': typeof AuthenticatedAdminRouteWithChildren
   '/confirmation/$orderNumber': typeof ConfirmationOrderNumberRoute
+  '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
+  '/_authenticated/admin/orders/$orderNumber': typeof AuthenticatedAdminOrdersOrderNumberRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -97,6 +115,8 @@ export interface FileRouteTypes {
     | '/print'
     | '/admin'
     | '/confirmation/$orderNumber'
+    | '/admin/'
+    | '/admin/orders/$orderNumber'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -104,8 +124,9 @@ export interface FileRouteTypes {
     | '/cart'
     | '/checkout'
     | '/print'
-    | '/admin'
     | '/confirmation/$orderNumber'
+    | '/admin'
+    | '/admin/orders/$orderNumber'
   id:
     | '__root__'
     | '/'
@@ -116,6 +137,8 @@ export interface FileRouteTypes {
     | '/print'
     | '/_authenticated/admin'
     | '/confirmation/$orderNumber'
+    | '/_authenticated/admin/'
+    | '/_authenticated/admin/orders/$orderNumber'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -186,15 +209,43 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConfirmationOrderNumberRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/admin/': {
+      id: '/_authenticated/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
+      parentRoute: typeof AuthenticatedAdminRoute
+    }
+    '/_authenticated/admin/orders/$orderNumber': {
+      id: '/_authenticated/admin/orders/$orderNumber'
+      path: '/orders/$orderNumber'
+      fullPath: '/admin/orders/$orderNumber'
+      preLoaderRoute: typeof AuthenticatedAdminOrdersOrderNumberRouteImport
+      parentRoute: typeof AuthenticatedAdminRoute
+    }
   }
 }
 
+interface AuthenticatedAdminRouteChildren {
+  AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
+  AuthenticatedAdminOrdersOrderNumberRoute: typeof AuthenticatedAdminOrdersOrderNumberRoute
+}
+
+const AuthenticatedAdminRouteChildren: AuthenticatedAdminRouteChildren = {
+  AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
+  AuthenticatedAdminOrdersOrderNumberRoute:
+    AuthenticatedAdminOrdersOrderNumberRoute,
+}
+
+const AuthenticatedAdminRouteWithChildren =
+  AuthenticatedAdminRoute._addFileChildren(AuthenticatedAdminRouteChildren)
+
 interface AuthenticatedRouteChildren {
-  AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
+  AuthenticatedAdminRoute: typeof AuthenticatedAdminRouteWithChildren
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
-  AuthenticatedAdminRoute: AuthenticatedAdminRoute,
+  AuthenticatedAdminRoute: AuthenticatedAdminRouteWithChildren,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
