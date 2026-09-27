@@ -38,10 +38,21 @@ function CartPage() {
                   <div className="py-2">
                     <p className="label-mono text-primary">{item.photoNumber}</p>
                     <h2 className="mt-2 font-display text-2xl">{item.productName}</h2>
-                    <p className="text-sm text-muted-foreground">
-                      {item.sizeLabel} · {formatCents(item.unitPriceCents)} each
+                    <p className="mt-1.5 text-sm text-muted-foreground">
+                      {[item.finishName, item.sizeLabel].filter(Boolean).join(" · ")}
                     </p>
-                    <div className="mt-4 flex items-center gap-3">
+                    {item.border && (
+                      <p className="mt-1 text-sm text-muted-foreground">White Border</p>
+                    )}
+                    {item.mountingId &&
+                      item.mountingId !== "print-only" &&
+                      item.mountingName && (
+                        <p className="mt-1 text-sm text-muted-foreground">{item.mountingName}</p>
+                      )}
+                    <p className="mt-3 text-sm text-foreground">
+                      {formatCents(item.unitPriceCents)} each
+                    </p>
+                    <div className="mt-3 flex items-center gap-3">
                       <button
                         className="icon-button !h-8 !w-8"
                         onClick={() => setQuantity(item.key, item.quantity - 1)}
@@ -70,7 +81,7 @@ function CartPage() {
                 </article>
               ))}
             </div>
-            <aside className="h-fit rounded-3xl bg-foreground p-6 text-white lg:sticky lg:top-6">
+            <aside className="h-fit rounded-3xl bg-[#3C3933] p-6 text-white lg:sticky lg:top-6">
               <p className="label-mono text-white/55">Order summary</p>
               <div className="mt-6 flex justify-between border-b border-white/15 pb-5">
                 <span>Subtotal</span>

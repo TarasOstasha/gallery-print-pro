@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { MOUNTING_IDS, type MountingId } from "@/lib/print-catalog";
 
 export type CartItem = {
-  /** Stable key: one photo + one product variant. */
+  /** Stable key: photo + product variant + border + mounting. */
   key: string;
   photoId: string;
   photoNumber: string;
@@ -12,8 +13,15 @@ export type CartItem = {
   photoHeight?: number;
   productId: string;
   productName: string;
+  finishId: string;
+  finishName: string;
   productVariantId: string;
   sizeLabel: string;
+  border: boolean;
+  mountingId: MountingId | string;
+  mountingName: string;
+  printPriceCents: number;
+  mountingPriceCents: number;
   unitPriceCents: number;
   quantity: number;
 };
@@ -29,7 +37,41 @@ type CartContextValue = {
   hydrated: boolean;
 };
 
-const STORAGE_KEY = "atelier-nord.cart.v1";
+const STORAGE_KEY = "atelier-nord.cart.v2";
+
+function cartItemKey(item: Omit<CartItem, "key">): string {
+  return `${item.photoId}:${item.productVariantId}:${item.border ? "border" : "noborder"}:${item.mountingId}`;
+}
+
+function normalizeCartItem(raw: Partial<CartItem> & Pick<CartItem, "photoId" | "productVariantId" | "quantity" | "unitPriceCents">): CartItem | null {
+  if (!raw.photoId || !raw.productVariantId) return null;
+  const border = Boolean(raw.border);
+  const mountingId = raw.mountingId || MOUNTING_IDS.printOnly;
+  const mountingPriceCents = raw.mountingPriceCents ?? 0;
+  const printPriceCents = raw.printPriceCents ?? Math.max(0, raw.unitPriceCents - mountingPriceCents);
+  const item: Omit<CartItem, "key"> = {
+    photoId: raw.photoId,
+    photoNumber: raw.photoNumber ?? "",
+    photoUrl: raw.photoUrl ?? "",
+    eventSlug: raw.eventSlug ?? "customer-uploads",
+    photoWidth: raw.photoWidth,
+    photoHeight: raw.photoHeight,
+    productId: raw.productId ?? "",
+    productName: raw.productName ?? "",
+    finishId: raw.finishId ?? "",
+    finishName: raw.finishName ?? "",
+    productVariantId: raw.productVariantId,
+    sizeLabel: raw.sizeLabel ?? "",
+    border,
+    mountingId,
+    mountingName: raw.mountingName ?? "Print Only",
+    printPriceCents,
+    mountingPriceCents,
+    unitPriceCents: raw.unitPriceCents,
+    quantity: raw.quantity,
+  };
+  return { ...item, key: cartItemKey(item) };
+}
 
 const CartContext = createContext<CartContextValue | null>(null);
 
@@ -40,19 +82,28 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     void (async () => {
       try {
-        const raw = window.localStorage.getItem(STORAGE_KEY);
+        const raw =
+          window.localStorage.getItem(STORAGE_KEY) ??
+          window.localStorage.getItem("atelier-nord.cart.v1");
         if (!raw) return;
-        const parsed = JSON.parse(raw) as CartItem[];
+        const parsed = JSON.parse(raw) as Array<Partial<CartItem>>;
         const { getCustomerPhotoPreviewUrl } = await import("@/lib/customer-photos");
-        const refreshed = await Promise.all(
-          parsed.map(async (item) => {
-            if (!item.photoId.startsWith("photo-n07-")) {
-              const url = await getCustomerPhotoPreviewUrl(item.photoId);
-              if (url) return { ...item, photoUrl: url };
-            }
-            return item;
-          }),
-        );
+        const refreshed = (
+          await Promise.all(
+            parsed.map(async (entry) => {
+              const normalized = normalizeCartItem(
+                entry as Partial<CartItem> &
+                  Pick<CartItem, "photoId" | "productVariantId" | "quantity" | "unitPriceCents">,
+              );
+              if (!normalized) return null;
+              if (!normalized.photoId.startsWith("photo-n07-")) {
+                const url = await getCustomerPhotoPreviewUrl(normalized.photoId);
+                if (url) return { ...normalized, photoUrl: url };
+              }
+              return normalized;
+            }),
+          )
+        ).filter((entry): entry is CartItem => entry != null);
         setItems(refreshed);
       } catch {
         /* ignore malformed cart */
@@ -68,7 +119,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, [items, hydrated]);
 
   const addItem = useCallback((item: Omit<CartItem, "key">) => {
-    const key = `${item.photoId}:${item.productVariantId}`;
+    const key = cartItemKey(item);
     setItems((current) => {
       const existing = current.find((entry) => entry.key === key);
       if (existing) {

@@ -9,7 +9,7 @@ import {
   saveCustomerPhoto,
   type StoredCustomerPhoto,
 } from "@/lib/customer-photos";
-import { loadPrintProduct, type PrintProduct } from "@/lib/print-catalog";
+import { loadPrintCatalog, findFinish, findProduct, findSize, MOUNTING_IDS, resolveMounting, unitPriceCents, type PrintCatalog } from "@/lib/print-catalog";
 import { useCart } from "@/lib/cart";
 import { toast } from "sonner";
 
@@ -19,9 +19,13 @@ const UPLOAD_EVENT_SLUG = "customer-uploads";
 
 function UploadPrintHome() {
   const [photos, setPhotos] = useState<StoredCustomerPhoto[]>([]);
-  const [product, setProduct] = useState<PrintProduct | null>(null);
+  const [catalog, setCatalog] = useState<PrintCatalog | null>(null);
   const [configureId, setConfigureId] = useState<string | null>(null);
-  const [variantId, setVariantId] = useState("");
+  const [productId, setProductId] = useState<string | null>(null);
+  const [finishId, setFinishId] = useState<string | null>(null);
+  const [sizeId, setSizeId] = useState<string | null>(null);
+  const [border, setBorder] = useState(false);
+  const [mountingId, setMountingId] = useState<string>(MOUNTING_IDS.printOnly);
   const [quantity, setQuantity] = useState(1);
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -33,11 +37,38 @@ function UploadPrintHome() {
 
   useEffect(() => {
     void loadPhotos();
-    void loadPrintProduct().then((p) => {
-      setProduct(p);
-      setVariantId(p.variants[2]?.id ?? p.variants[0]?.id ?? "");
-    });
+    void loadPrintCatalog().then(setCatalog);
   }, [loadPhotos]);
+
+  function openConfigure(id: string) {
+    setConfigureId(id);
+    setProductId(null);
+    setFinishId(null);
+    setSizeId(null);
+    setBorder(false);
+    setMountingId(MOUNTING_IDS.printOnly);
+    setQuantity(1);
+  }
+
+  function selectProduct(id: string) {
+    setProductId(id);
+    setFinishId(null);
+    setSizeId(null);
+    setBorder(false);
+    setMountingId(MOUNTING_IDS.printOnly);
+  }
+
+  function selectFinish(id: string) {
+    setFinishId(id);
+    setSizeId(null);
+    setBorder(false);
+    setMountingId(MOUNTING_IDS.printOnly);
+  }
+
+  function selectSize(id: string) {
+    setSizeId(id);
+    setMountingId(MOUNTING_IDS.printOnly);
+  }
 
   async function onFiles(files: FileList | null) {
     if (!files?.length) return;
@@ -67,10 +98,16 @@ function UploadPrintHome() {
   }
 
   const active = configureId ? photos.find((p) => p.id === configureId) : null;
-  const variant = product?.variants.find((v) => v.id === variantId);
+  const product = findProduct(catalog ?? { products: [] }, productId);
+  const finish = findFinish(product, finishId);
+  const size = findSize(finish, sizeId);
 
   function addToCart() {
-    if (!active || !product || !variant) return;
+    if (!active || !product || !finish || !size || size.priceCents == null) return;
+    const mounting = resolveMounting(size.label, mountingId);
+    if (!mounting) return;
+    const printPriceCents = size.priceCents;
+    const mountingPriceCents = mounting.priceCents;
     addItem({
       photoId: active.id,
       photoNumber: active.number,
@@ -80,13 +117,25 @@ function UploadPrintHome() {
       eventSlug: UPLOAD_EVENT_SLUG,
       productId: product.id,
       productName: product.name,
-      productVariantId: variant.id,
-      sizeLabel: variant.label,
-      unitPriceCents: variant.priceCents,
+      finishId: finish.id,
+      finishName: finish.name,
+      productVariantId: size.id,
+      sizeLabel: size.label,
+      border,
+      mountingId: mounting.id,
+      mountingName: mounting.name,
+      printPriceCents,
+      mountingPriceCents,
+      unitPriceCents: unitPriceCents(printPriceCents, mountingPriceCents),
       quantity,
     });
-    toast.success(`${active.number} · ${variant.label} added to cart`);
+    toast.success(`${active.number} · ${size.label} added to cart`);
     setConfigureId(null);
+    setProductId(null);
+    setFinishId(null);
+    setSizeId(null);
+    setBorder(false);
+    setMountingId(MOUNTING_IDS.printOnly);
     setQuantity(1);
   }
 
@@ -94,16 +143,9 @@ function UploadPrintHome() {
     <main className="min-h-screen">
       <SiteHeader />
       <section className="px-5 pb-10 pt-10 md:px-10 md:pb-16 md:pt-16">
-        <p className="label-mono text-primary">Print your photos</p>
-        <div className="mt-5 flex flex-col justify-between gap-5 md:flex-row md:items-end">
-          <h1 className="max-w-3xl font-display text-5xl leading-[.92] tracking-[-.04em] md:text-7xl">
-            Upload. Choose a size. <span className="italic text-primary">Order.</span>
-          </h1>
-          <p className="max-w-sm pb-2 text-sm leading-6 text-muted-foreground">
-            Add your own photographs, pick a print size, and we&apos;ll produce archival lustre
-            prints to order.
-          </p>
-        </div>
+        <h1 className="max-w-3xl font-display text-5xl leading-[.92] tracking-[-.04em] md:text-7xl">
+          Upload. Choose a product and size. Order.
+        </h1>
       </section>
 
       <section className="px-5 md:px-10">
@@ -132,7 +174,11 @@ function UploadPrintHome() {
       </section>
 
       {photos.length > 0 && (
-        <section className="columns-1 gap-3 px-3 pb-16 pt-10 sm:columns-2 lg:columns-3 xl:columns-4 md:px-10">
+        <section className="px-5 pb-16 pt-10 md:px-10">
+          <p className="mb-6 text-sm text-muted-foreground">
+            Click on a photo to choose the product and size.
+          </p>
+          <div className="columns-1 gap-3 sm:columns-2 lg:columns-3 xl:columns-4">
           {photos.map((item) => (
             <article
               key={item.id}
@@ -140,10 +186,7 @@ function UploadPrintHome() {
             >
               <button
                 type="button"
-                onClick={() => {
-                  setConfigureId(item.id);
-                  setQuantity(1);
-                }}
+                onClick={() => openConfigure(item.id)}
                 className="block w-full text-left"
               >
                 <img
@@ -170,6 +213,7 @@ function UploadPrintHome() {
               </button>
             </article>
           ))}
+          </div>
         </section>
       )}
 
@@ -178,13 +222,13 @@ function UploadPrintHome() {
         <span className="label-mono">Photographic prints · Made to order</span>
       </footer>
 
-      {active && product && (
+      {active && catalog && (
         <div
           className="fixed inset-0 z-50 flex justify-end bg-black/55"
           onClick={() => setConfigureId(null)}
         >
           <aside
-            className="h-full w-full overflow-y-auto bg-background text-foreground sm:max-w-lg"
+            className="flex h-full w-full flex-col overflow-hidden bg-background text-foreground sm:max-w-lg"
             onClick={(e) => e.stopPropagation()}
           >
             <PrintConfigurePanel
@@ -192,10 +236,18 @@ function UploadPrintHome() {
               photoUrl={active.previewUrl}
               photoWidth={active.width}
               photoHeight={active.height}
-              product={product}
-              variantId={variantId}
+              catalog={catalog}
+              productId={productId}
+              finishId={finishId}
+              sizeId={sizeId}
+              border={border}
+              mountingId={mountingId}
               quantity={quantity}
-              onVariantId={setVariantId}
+              onProductId={selectProduct}
+              onFinishId={selectFinish}
+              onSizeId={selectSize}
+              onBorder={setBorder}
+              onMountingId={setMountingId}
               onQuantity={setQuantity}
               onClose={() => setConfigureId(null)}
               onAdd={addToCart}

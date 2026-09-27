@@ -12,7 +12,7 @@ export function SiteHeader({ dark = false }: { dark?: boolean }) {
         <img
           src="/images/dynasty-pix-logo.png"
           alt="Dynasty Pix"
-          className={`h-9 w-auto md:h-11 ${dark ? "" : "rounded-sm bg-black px-2 py-1"}`}
+          className="h-9 w-auto md:h-11"
         />
       </Link>
       <nav className="flex items-center gap-5">

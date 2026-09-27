@@ -94,11 +94,15 @@ export type Database = {
       order_items: {
         Row: {
           created_at: string
+          has_border: boolean
           id: string
           line_total_cents: number
+          mounting_code: string
+          mounting_price_cents: number
           order_id: string
           photo_id: string
           photo_number_snapshot: string
+          print_price_cents: number | null
           product_name_snapshot: string
           product_variant_id: string
           quantity: number
@@ -107,11 +111,15 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          has_border?: boolean
           id?: string
           line_total_cents: number
+          mounting_code?: string
+          mounting_price_cents?: number
           order_id: string
           photo_id: string
           photo_number_snapshot: string
+          print_price_cents?: number | null
           product_name_snapshot: string
           product_variant_id: string
           quantity: number
@@ -120,11 +128,15 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          has_border?: boolean
           id?: string
           line_total_cents?: number
+          mounting_code?: string
+          mounting_price_cents?: number
           order_id?: string
           photo_id?: string
           photo_number_snapshot?: string
+          print_price_cents?: number | null
           product_name_snapshot?: string
           product_variant_id?: string
           quantity?: number
@@ -313,6 +325,7 @@ export type Database = {
       }
       product_variants: {
         Row: {
+          finish: string
           height_in: number | null
           id: string
           is_active: boolean
@@ -323,6 +336,7 @@ export type Database = {
           width_in: number | null
         }
         Insert: {
+          finish?: string
           height_in?: number | null
           id?: string
           is_active?: boolean
@@ -333,6 +347,7 @@ export type Database = {
           width_in?: number | null
         }
         Update: {
+          finish?: string
           height_in?: number | null
           id?: string
           is_active?: boolean

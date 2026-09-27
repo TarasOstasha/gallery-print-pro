@@ -58,14 +58,14 @@
 :root {
   --radius: 1.25rem;
 
-  --background: oklch(0.958 0.008 264);
+  --background: oklch(0.982 0 0);
   --foreground: oklch(0.214 0.017 276);
   --card: oklch(0.99 0.004 264);
   --card-foreground: oklch(0.214 0.017 276);
   --popover: oklch(0.99 0.004 264);
   --popover-foreground: oklch(0.214 0.017 276);
 
-  --primary: oklch(0.572 0.079 245);
+  --primary: oklch(0.578 0.172 146.75);
   --primary-foreground: oklch(0.977 0.004 264);
 
   --secondary: oklch(0.928 0.008 264);
@@ -74,7 +74,7 @@
   --muted: oklch(0.928 0.008 264);
   --muted-foreground: oklch(0.487 0.019 276);
 
-  --accent: oklch(0.928 0.011 245);
+  --accent: oklch(0.928 0 0);
   --accent-foreground: oklch(0.214 0.017 276);
 
   --destructive: oklch(0.552 0.196 22);
@@ -82,7 +82,7 @@
 
   --border: oklch(0.214 0.017 276 / 0.1);
   --input: oklch(0.214 0.017 276 / 0.14);
-  --ring: oklch(0.572 0.079 245);
+  --ring: oklch(0.578 0.172 146.75);
 
   --surface: oklch(0.99 0.004 264 / 0.62);
   --surface-solid: oklch(0.982 0.005 264);
@@ -141,19 +141,19 @@
   animation: glint 4200ms var(--ease-frost) infinite;
 }
 
-/* Small uppercase mono label used throughout the gallery chrome. */
+/* Small uppercase label used throughout the gallery chrome. */
 @utility label-mono {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 0.6875rem;
   text-transform: uppercase;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.16em;
 }
 
 @utility label-mono-xs {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 0.625rem;
   text-transform: uppercase;
-  letter-spacing: 0.3em;
+  letter-spacing: 0.18em;
 }
 
 @utility frost-panel {

@@ -2,18 +2,31 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { Building2, Check, Truck } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { shippingMethods, studio } from "@/lib/catalog";
 import { useCart } from "@/lib/cart";
 import { formatCents } from "@/lib/money";
 import { getCustomerPhotoOriginalBase64 } from "@/lib/customer-photos";
 import { saveLocalOrder } from "@/lib/local-orders";
+import {
+  PRINT_CANCELLATION_POLICY_SECTIONS,
+  PRINT_CANCELLATION_POLICY_TITLE,
+} from "@/lib/print-cancellation-policy";
 import { placeOrder } from "@/orders.functions";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/checkout")({ component: Checkout });
 
+const MIN_ORDER_CENTS = 2000;
+
 const input =
-  "mt-2 w-full rounded-xl border bg-card px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary";
+  "mt-2 w-full rounded-xl border bg-card px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#039333]";
 
 function Checkout() {
   const { items, subtotalCents, clear } = useCart();
@@ -21,13 +34,25 @@ function Checkout() {
   const [fulfillment, setFulfillment] = useState<"shipping" | "studio_pickup">("shipping");
   const [shipping, setShipping] = useState("standard");
   const [submitting, setSubmitting] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [policyOpen, setPolicyOpen] = useState(false);
   const ship =
     fulfillment === "shipping" ? shippingMethods.find((m) => m.code === shipping)!.priceCents : 0;
   const tax = Math.round((subtotalCents + ship) * studio.taxRate);
   const total = subtotalCents + ship + tax;
+  const meetsMinimum = subtotalCents >= MIN_ORDER_CENTS;
+  const canPlaceOrder = meetsMinimum && termsAccepted && !submitting;
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!meetsMinimum) {
+      toast.error("Minimum order is $20.00.");
+      return;
+    }
+    if (!termsAccepted) {
+      toast.error("Please agree to the Print Cancellation Policy & Terms.");
+      return;
+    }
     setSubmitting(true);
     try {
       const data = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, string>;
@@ -78,6 +103,8 @@ function Checkout() {
           productVariantId: i.productVariantId,
           sizeLabel: i.sizeLabel,
           quantity: i.quantity,
+          border: Boolean(i.border),
+          mountingId: i.mountingId || "print-only",
         })),
         photoFiles,
         totals: { subtotalCents, shippingCents: ship, taxCents: tax, totalCents: total },
@@ -146,13 +173,13 @@ function Checkout() {
         className="mx-auto grid max-w-6xl gap-10 px-5 py-12 md:px-10 lg:grid-cols-[1fr_360px]"
       >
         <section>
-          <p className="label-mono text-primary">Secure checkout</p>
+          <p className="label-mono text-[#039333]">Secure checkout</p>
           <h1 className="mt-3 font-display text-6xl">How should we deliver?</h1>
           <div className="mt-10 grid gap-3 sm:grid-cols-2">
             <button
               type="button"
               onClick={() => setFulfillment("shipping")}
-              className={`rounded-2xl border p-5 text-left ${fulfillment === "shipping" ? "border-primary bg-accent ring-1 ring-primary" : "bg-card"}`}
+              className={`rounded-2xl border p-5 text-left ${fulfillment === "shipping" ? "border-[#039333] bg-accent ring-1 ring-[#039333]" : "bg-card"}`}
             >
               <Truck />
               <strong className="mt-5 block">Ship my order</strong>
@@ -163,7 +190,7 @@ function Checkout() {
             <button
               type="button"
               onClick={() => setFulfillment("studio_pickup")}
-              className={`rounded-2xl border p-5 text-left ${fulfillment === "studio_pickup" ? "border-primary bg-accent ring-1 ring-primary" : "bg-card"}`}
+              className={`rounded-2xl border p-5 text-left ${fulfillment === "studio_pickup" ? "border-[#039333] bg-accent ring-1 ring-[#039333]" : "bg-card"}`}
             >
               <Building2 />
               <strong className="mt-5 block">Studio pickup</strong>
@@ -205,7 +232,7 @@ function Checkout() {
                           value={m.code}
                           checked={shipping === m.code}
                           onChange={() => setShipping(m.code)}
-                          className="mr-3"
+                          className="mr-3 accent-[#039333]"
                         />
                         <strong>{m.name}</strong>
                         <small className="ml-2 text-muted-foreground">{m.detail}</small>
@@ -217,7 +244,7 @@ function Checkout() {
               </>
             ) : (
               <div className="mt-10 rounded-2xl bg-accent p-6">
-                <div className="flex items-center gap-2 text-primary">
+                <div className="flex items-center gap-2 text-[#039333]">
                   <Check size={18} />
                   <span className="label-mono">Studio pickup · Free</span>
                 </div>
@@ -234,7 +261,7 @@ function Checkout() {
             )}
           </div>
         </section>
-        <aside className="h-fit rounded-3xl bg-foreground p-6 text-white lg:sticky lg:top-6">
+        <aside className="h-fit rounded-3xl bg-[#3C3933] p-6 text-white lg:sticky lg:top-6">
           <p className="label-mono text-white/55">Order summary</p>
           <div className="mt-5 max-h-56 space-y-3 overflow-auto">
             {items.map((i) => (
@@ -266,15 +293,62 @@ function Checkout() {
             Payment is Stripe-ready. This preview safely creates a test order without collecting
             card details.
           </div>
+          {!meetsMinimum && (
+            <p className="mt-4 text-xs leading-5 text-amber-200">Minimum order is $20.00.</p>
+          )}
+          <label className="mt-4 flex cursor-pointer items-start gap-3 text-xs leading-5 text-white/80">
+            <input
+              type="checkbox"
+              checked={termsAccepted}
+              onChange={(e) => setTermsAccepted(e.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-[#039333]"
+            />
+            <span>
+              I agree to the{" "}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setPolicyOpen(true);
+                }}
+                className="underline underline-offset-2 hover:text-white"
+              >
+                Print Cancellation Policy &amp; Terms
+              </button>
+              .
+            </span>
+          </label>
           <button
             type="submit"
-            disabled={submitting}
-            className="mt-5 w-full rounded-full bg-white px-5 py-4 label-mono text-black disabled:opacity-60"
+            disabled={!canPlaceOrder}
+            className="mt-5 w-full rounded-full bg-white px-5 py-4 font-sans text-xs uppercase tracking-[.2em] text-black disabled:opacity-60"
           >
             {submitting ? "Placing order…" : "Place test order"}
           </button>
         </aside>
       </form>
+
+      <Dialog open={policyOpen} onOpenChange={setPolicyOpen}>
+        <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto bg-background text-foreground sm:rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-3xl font-normal tracking-tight">
+              {PRINT_CANCELLATION_POLICY_TITLE}
+            </DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">
+              Please review these terms before placing your order.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-5 text-sm leading-6 text-foreground">
+            {PRINT_CANCELLATION_POLICY_SECTIONS.map((section) => (
+              <div key={section.heading}>
+                <p className="label-mono text-[#039333]">{section.heading}</p>
+                <p className="mt-2 text-muted-foreground">{section.body}</p>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

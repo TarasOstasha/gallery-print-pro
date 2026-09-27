@@ -15,6 +15,20 @@
       "when": 1789936195112,
       "tag": "0001_order_numbers_and_storage_policies",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789937000000,
+      "tag": "0002_print_finish_catalog",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789937100000,
+      "tag": "0003_order_item_border_mounting",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,15 @@
 import { createDb, isServiceRoleKey } from "@/server/db.server";
+import {
+  FINE_ART_PRINT_ID,
+  PHOTOGRAPHIC_PRINT_ID,
+  findPrintSku,
+  resolveMounting,
+  resolvePrintSku,
+  unitPriceCents,
+  type ResolvedPrintSku,
+} from "@/lib/print-catalog";
 
 export const CUSTOMER_UPLOAD_EVENT_ID = "33333333-3333-4333-8333-333333333333";
-const PRODUCT_ID = "11111111-1111-4111-8111-111111111111";
 
 export type CreateOrderInput = {
   fulfillment: "shipping" | "studio_pickup";
@@ -26,6 +34,8 @@ export type CreateOrderInput = {
     productVariantId: string;
     sizeLabel: string;
     quantity: number;
+    border?: boolean;
+    mountingId?: string;
   }>;
   photoFiles: Array<{
     photoId: string;
@@ -56,6 +66,97 @@ export type CreateOrderResult = {
 
 function decodeBase64(data: string): Uint8Array {
   return new Uint8Array(Buffer.from(data, "base64"));
+}
+
+async function resolveSkuForItem(
+  sql: ReturnType<typeof createDb>,
+  item: CreateOrderInput["items"][number],
+): Promise<ResolvedPrintSku> {
+  const fromCatalog = resolvePrintSku(item.productVariantId);
+  if (fromCatalog) return fromCatalog;
+
+  // Legacy carts may still carry a product_variants UUID from the old single-finish catalog.
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    item.productVariantId,
+  );
+  if (isUuid) {
+    const rows = await sql<{
+      product_id: string;
+      finish: string | null;
+      size_label: string;
+    }[]>`
+      select product_id::text, finish, size_label
+      from public.product_variants
+      where id = ${item.productVariantId}::uuid
+      limit 1
+    `;
+    const row = rows[0];
+    if (row) {
+      const sku = findPrintSku(row.product_id, row.finish || "lustre", row.size_label);
+      if (sku) return sku;
+    }
+  }
+
+  // Last resort for older local carts that only stored size labels for Lustre.
+  const lustreFallback = findPrintSku(PHOTOGRAPHIC_PRINT_ID, "lustre", item.sizeLabel);
+  if (lustreFallback) return lustreFallback;
+
+  throw new Error(`Unknown or unpriced print selection: ${item.sizeLabel}`);
+}
+
+/** Upsert DB variant row so order_items FK stays valid; pricing still comes from catalog. */
+async function ensureProductVariantId(
+  sql: ReturnType<typeof createDb>,
+  sku: ResolvedPrintSku,
+): Promise<string> {
+  const description =
+    sku.productId === FINE_ART_PRINT_ID
+      ? "Museum-quality fine art papers, printed to order."
+      : "Archival photographic paper, printed to order.";
+  const sortOrder = sku.productId === FINE_ART_PRINT_ID ? 2 : 1;
+
+  await sql`
+    insert into public.products (id, name, category, description, is_active, sort_order)
+    values (
+      ${sku.productId}::uuid,
+      ${sku.productName},
+      'Prints',
+      ${description},
+      true,
+      ${sortOrder}
+    )
+    on conflict (id) do update
+    set name = excluded.name,
+        is_active = true
+  `;
+
+  const rows = await sql<{ id: string }[]>`
+    insert into public.product_variants (
+      product_id, finish, size_label, width_in, height_in, price_cents, is_active, sort_order
+    ) values (
+      ${sku.productId}::uuid,
+      ${sku.finishId},
+      ${sku.sizeLabel},
+      ${sku.width},
+      ${sku.height},
+      ${sku.priceCents},
+      true,
+      0
+    )
+    on conflict (product_id, finish, size_label) do update
+    set width_in = excluded.width_in,
+        height_in = excluded.height_in,
+        price_cents = excluded.price_cents,
+        is_active = true
+    returning id
+  `;
+
+  if (!rows[0]?.id) {
+    throw new Error(
+      "Print catalog is not migrated. Run npm run db:migrate (migration 0002_print_finish_catalog).",
+    );
+  }
+  return rows[0].id;
 }
 
 /**
@@ -90,21 +191,6 @@ export async function createOrderInDatabase(input: CreateOrderInput): Promise<Cr
       on conflict (id) do nothing
     `;
 
-    const variants = await sql<{
-      id: string;
-      size_label: string;
-      price_cents: number;
-    }[]>`
-      select id, size_label, price_cents
-      from public.product_variants
-      where product_id = ${PRODUCT_ID}::uuid and is_active = true
-      order by sort_order
-    `;
-    if (!variants.length) throw new Error("Print sizes are unavailable");
-
-    const variantById = new Map(variants.map((v) => [v.id, v]));
-    const variantByLabel = new Map(variants.map((v) => [v.size_label, v]));
-
     const shippingRows = await sql<{ code: string; price_cents: number }[]>`
       select code, price_cents from public.shipping_methods where is_active = true
     `;
@@ -121,22 +207,48 @@ export async function createOrderInDatabase(input: CreateOrderInput): Promise<Cr
       variantId: string;
       quantity: number;
       unitPrice: number;
+      printPriceCents: number;
+      mountingPriceCents: number;
+      hasBorder: boolean;
+      mountingCode: string;
       photoNumber: string;
       sizeLabel: string;
+      productName: string;
     }> = [];
 
     for (const item of input.items) {
-      const variant =
-        variantById.get(item.productVariantId) ?? variantByLabel.get(item.sizeLabel);
-      if (!variant) throw new Error(`Unknown print size: ${item.sizeLabel}`);
-      subtotalCents += variant.price_cents * item.quantity;
+      // Server-side pricing from print-catalog.ts — never trust browser amounts.
+      const sku = await resolveSkuForItem(sql, item);
+      const mounting = resolveMounting(sku.sizeLabel, item.mountingId || "print-only");
+      if (!mounting) {
+        throw new Error(`Unavailable mounting for ${sku.sizeLabel}`);
+      }
+      const hasBorder = Boolean(item.border);
+      const printPriceCents = sku.priceCents;
+      const mountingPriceCents = mounting.priceCents;
+      const lineUnit = unitPriceCents(printPriceCents, mountingPriceCents);
+      const variantId = await ensureProductVariantId(sql, sku);
+      const productName = [
+        sku.displayName,
+        hasBorder ? "White border" : null,
+        mounting.name,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+      subtotalCents += lineUnit * item.quantity;
       lineItems.push({
         clientPhotoId: item.photoId,
-        variantId: variant.id,
+        variantId,
         quantity: item.quantity,
-        unitPrice: variant.price_cents,
+        unitPrice: lineUnit,
+        printPriceCents,
+        mountingPriceCents,
+        hasBorder,
+        mountingCode: mounting.id,
         photoNumber: item.photoNumber,
-        sizeLabel: variant.size_label,
+        sizeLabel: sku.sizeLabel,
+        productName,
       });
     }
 
@@ -208,13 +320,32 @@ export async function createOrderInDatabase(input: CreateOrderInput): Promise<Cr
     `;
     const order = orderRows[0]!;
 
+    // Ensure optional border/mounting snapshot columns exist (migration 0003).
+    await sql`
+      alter table public.order_items
+        add column if not exists has_border boolean not null default false
+    `;
+    await sql`
+      alter table public.order_items
+        add column if not exists mounting_code text not null default 'print-only'
+    `;
+    await sql`
+      alter table public.order_items
+        add column if not exists mounting_price_cents integer not null default 0
+    `;
+    await sql`
+      alter table public.order_items
+        add column if not exists print_price_cents integer
+    `;
+
     for (const line of lineItems) {
       const photoId = photoIdMap.get(line.clientPhotoId);
       if (!photoId) throw new Error(`Missing photo for ${line.photoNumber}`);
       await sql`
         insert into public.order_items (
           order_id, photo_id, product_variant_id, quantity, unit_price_cents, line_total_cents,
-          photo_number_snapshot, product_name_snapshot, size_label_snapshot
+          photo_number_snapshot, product_name_snapshot, size_label_snapshot,
+          has_border, mounting_code, mounting_price_cents, print_price_cents
         ) values (
           ${order.id}::uuid,
           ${photoId}::uuid,
@@ -223,8 +354,12 @@ export async function createOrderInDatabase(input: CreateOrderInput): Promise<Cr
           ${line.unitPrice},
           ${line.unitPrice * line.quantity},
           ${line.photoNumber},
-          'Photographic Print',
-          ${line.sizeLabel}
+          ${line.productName},
+          ${line.sizeLabel},
+          ${line.hasBorder},
+          ${line.mountingCode},
+          ${line.mountingPriceCents},
+          ${line.printPriceCents}
         )
       `;
     }
@@ -265,7 +400,7 @@ export async function createOrderInDatabase(input: CreateOrderInput): Promise<Cr
         photoId: photoIdMap.get(line.clientPhotoId)!,
         photoNumber: line.photoNumber,
         originalPath: null,
-        productName: "Photographic Print",
+        productName: line.productName,
         sizeLabel: line.sizeLabel,
         quantity: line.quantity,
       })),

@@ -31,37 +31,29 @@ const featuredSizes = product.variants.filter((v) =>
 function HomePage() {
   return (
     <main className="min-h-screen">
-      <section className="relative overflow-hidden bg-foreground text-primary-foreground">
-        <div
-          className="pointer-events-none absolute inset-0 opacity-40"
-          style={{
-            background:
-              "radial-gradient(ellipse 80% 60% at 70% 20%, oklch(0.572 0.079 245 / 0.45), transparent 60%)",
-          }}
-        />
-        <SiteHeader dark />
+      <section className="relative overflow-hidden bg-background text-foreground">
+        <SiteHeader />
         <div className="relative mx-auto grid max-w-7xl gap-12 px-5 pb-20 pt-6 md:px-10 lg:grid-cols-2 lg:items-center lg:gap-16 lg:pb-28 lg:pt-10">
           <div>
-            <p className="label-mono text-white/55">Professional photographic prints</p>
+            <p className="label-mono text-muted-foreground">Professional photographic prints</p>
             <h1 className="mt-6 max-w-xl font-display text-[clamp(3rem,8vw,5.5rem)] leading-[0.9] tracking-[-.045em]">
-              Your photos, <span className="italic text-primary-foreground/90">beautifully</span>{" "}
-              printed.
+              Your photos, <span className="italic">beautifully</span> printed.
             </h1>
-            <p className="mt-6 max-w-md text-base leading-7 text-white/65">
+            <p className="mt-6 max-w-md text-base leading-7 text-muted-foreground">
               Upload your images, choose an archival lustre size, and order prints shipped to you or
               ready for studio pickup  crafted to last.
             </p>
             <div className="mt-10 flex flex-wrap items-center gap-4">
               <Link
                 to="/print"
-                className="inline-flex items-center gap-3 rounded-full bg-white px-7 py-4 font-mono text-xs uppercase tracking-[.2em] text-foreground transition hover:bg-primary hover:text-white"
+                className="inline-flex items-center gap-3 rounded-full bg-foreground px-7 py-4 font-sans text-xs uppercase tracking-[.2em] text-primary-foreground transition hover:bg-primary hover:text-white"
               >
                 Start your order
                 <ArrowRight size={16} />
               </Link>
               <a
                 href="#how-it-works"
-                className="label-mono text-white/55 underline-offset-4 hover:text-white hover:underline"
+                className="label-mono text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
               >
                 How it works
               </a>
@@ -71,7 +63,7 @@ function HomePage() {
             {heroImages.map((img) => (
               <div
                 key={img.src}
-                className={`overflow-hidden rounded-2xl bg-white/5 ring-1 ring-white/10 ${img.className}`}
+                className={`overflow-hidden rounded-2xl bg-foreground/5 ring-1 ring-foreground/10 ${img.className}`}
               >
                 <img
                   src={img.src}
@@ -89,7 +81,7 @@ function HomePage() {
         <div className="mx-auto max-w-7xl">
           <p className="label-mono text-primary">Simple process</p>
           <h2 className="mt-4 max-w-lg font-display text-5xl tracking-tight md:text-6xl">
-            Three steps to <span className="italic text-primary">print</span>
+            Three steps to print
           </h2>
           <div className="mt-14 grid gap-6 md:grid-cols-3">
             <Step
@@ -101,7 +93,7 @@ function HomePage() {
             <Step
               icon={<Sparkles className="text-primary" />}
               step="02"
-              title="Choose size"
+              title="Choose product and size"
               body="Pick from professional print sizes  from 4×6 keepsakes to large 20×30 wall pieces."
             />
             <Step
@@ -127,14 +119,12 @@ function HomePage() {
         <div className="mx-auto max-w-7xl">
           <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
             <div>
-              <p className="label-mono text-primary">Photographic print</p>
-              <h2 className="mt-4 font-display text-5xl tracking-tight md:text-6xl">
-                Popular sizes
+              <h2 className="font-display text-5xl tracking-tight md:text-6xl">
+                Popular print sizes
               </h2>
             </div>
             <p className="max-w-sm text-sm leading-6 text-muted-foreground">
-              Archival lustre paper, printed to order. Full size list available when you configure
-              your print.
+              Full size list available when you configure your print.
             </p>
           </div>
           <div className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -183,7 +173,7 @@ function HomePage() {
             </ul>
             <Link
               to="/print"
-              className="mt-10 inline-flex items-center gap-3 rounded-full bg-foreground px-7 py-4 font-mono text-xs uppercase tracking-[.2em] text-primary-foreground transition hover:bg-primary"
+              className="mt-10 inline-flex items-center gap-3 rounded-full bg-foreground px-7 py-4 font-sans text-xs uppercase tracking-[.2em] text-primary-foreground transition hover:bg-primary"
             >
               Order prints now
               <ArrowRight size={16} />
@@ -192,7 +182,7 @@ function HomePage() {
         </div>
       </section>
 
-      <section className="border-t bg-foreground px-5 py-16 text-primary-foreground md:px-10 md:py-20">
+      <section className="border-t bg-[#3C3933] px-5 py-16 text-primary-foreground md:px-10 md:py-20">
         <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-8 md:flex-row md:items-center">
           <div>
             <h2 className="font-display text-4xl md:text-5xl">Ready when you are.</h2>
@@ -202,7 +192,7 @@ function HomePage() {
           </div>
           <Link
             to="/print"
-            className="inline-flex shrink-0 items-center gap-3 rounded-full bg-white px-8 py-4 font-mono text-xs uppercase tracking-[.2em] text-foreground"
+            className="inline-flex shrink-0 items-center gap-3 rounded-full bg-white px-8 py-4 font-sans text-xs uppercase tracking-[.2em] text-foreground"
           >
             Start your order
             <ArrowRight size={16} />
