@@ -1,4 +1,4 @@
-import { createDb, isServiceRoleKey } from "@/server/db.server";
+import { createDb, describeServiceRoleKey } from "@/server/db.server";
 import {
   FINE_ART_PRINT_ID,
   PHOTOGRAPHIC_PRINT_ID,
@@ -237,14 +237,37 @@ async function ensureProductVariantId(
 
 /**
  * Persists an order using DATABASE_URL (trusted server).
- * Uploads originals to Storage when a real service_role key is configured;
- * otherwise stores file bytes in print_file_blobs for studio fulfillment.
+ * Full-resolution customer originals MUST land in Supabase Storage (photo-originals).
+ * Postgres stores metadata/paths only — never new print_file_blobs binaries.
  */
 export async function createOrderInDatabase(input: CreateOrderInput): Promise<CreateOrderResult> {
   assertOrderRequestGates(input);
 
+  const keyStatus = describeServiceRoleKey(process.env.SUPABASE_SERVICE_ROLE_KEY);
+  if (!keyStatus.ok) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[createOrderInDatabase] Storage blocked: invalid service role key", {
+        present: keyStatus.present,
+        kind: keyStatus.kind,
+        supabaseUrlPresent: Boolean(process.env.SUPABASE_URL),
+        hint:
+          keyStatus.kind === "jwt:anon"
+            ? "SUPABASE_SERVICE_ROLE_KEY is currently an anon JWT. Replace it with the service_role secret (or sb_secret_…) from Supabase → Settings → API."
+            : "Set SUPABASE_SERVICE_ROLE_KEY to the service_role JWT or sb_secret_… key (not anon/publishable).",
+      });
+    } else {
+      console.error(
+        "[createOrderInDatabase] SUPABASE_SERVICE_ROLE_KEY is missing or not a service_role key",
+      );
+    }
+    throw new OrderValidationError(
+      "Photo storage is temporarily unavailable. Please try again later.",
+    );
+  }
+
   const sql = createDb();
   try {
+    // Legacy table may still hold older test-order binaries; keep schema for deletion/compat.
     await sql`
       create table if not exists public.print_file_blobs (
         photo_id uuid primary key references public.photos(id) on delete cascade,
@@ -361,11 +384,20 @@ export async function createOrderInDatabase(input: CreateOrderInput): Promise<Cr
     const taxCents = Math.round((subtotalCents + shippingCents) * taxRate);
     const totalCents = subtotalCents + shippingCents + taxCents;
 
-    const canUseStorage = isServiceRoleKey(process.env.SUPABASE_SERVICE_ROLE_KEY);
-    const photoIdMap = new Map<string, string>();
+    // Upload every unique customer original to Storage BEFORE creating the order.
+    const requiredPhotoIds = new Set(lineItems.map((l) => l.clientPhotoId));
+    const uploadedFiles = input.photoFiles.filter((f) => requiredPhotoIds.has(f.photoId));
+    for (const photoId of requiredPhotoIds) {
+      if (!uploadedFiles.some((f) => f.photoId === photoId)) {
+        throw new OrderValidationError(
+          "One or more photos are missing from your order. Please return to Print and try again.",
+        );
+      }
+    }
 
-    for (const file of input.photoFiles) {
-      const dbPhotoId = await upsertCustomerPhoto(sql, file, canUseStorage);
+    const photoIdMap = new Map<string, string>();
+    for (const file of uploadedFiles) {
+      const dbPhotoId = await upsertCustomerPhotoToStorage(sql, file);
       photoIdMap.set(file.photoId, dbPhotoId);
     }
 
@@ -564,25 +596,102 @@ export async function createOrderInDatabase(input: CreateOrderInput): Promise<Cr
   }
 }
 
-async function upsertCustomerPhoto(
+async function upsertCustomerPhotoToStorage(
   sql: ReturnType<typeof createDb>,
   file: CreateOrderInput["photoFiles"][number],
-  canUseStorage: boolean,
 ): Promise<string> {
+  const isDev = process.env.NODE_ENV !== "production";
   const bytes = decodeBase64(file.base64);
+  if (!bytes.byteLength) {
+    throw new OrderValidationError(`Photo "${file.fileName || file.photoNumber}" is empty.`);
+  }
+
   const ext = file.mimeType.includes("png") ? "png" : "jpg";
   const storagePath = `customer-uploads/${file.photoId}/original.${ext}`;
   const previewPath = `customer-uploads/${file.photoId}/preview.${ext}`;
 
-  if (canUseStorage) {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    await supabaseAdmin.storage
-      .from("photo-originals")
-      .upload(storagePath, bytes, { contentType: file.mimeType, upsert: true });
-    await supabaseAdmin.storage
-      .from("photo-previews")
-      .upload(previewPath, bytes, { contentType: file.mimeType, upsert: true });
+  if (isDev) {
+    console.info("[upsertCustomerPhotoToStorage] starting upload", {
+      photoNumber: file.photoNumber,
+      mimeType: file.mimeType,
+      byteLength: bytes.byteLength,
+      storagePath,
+      previewPath,
+      key: describeServiceRoleKey(process.env.SUPABASE_SERVICE_ROLE_KEY),
+    });
   }
+
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+  const { error: originalError } = await supabaseAdmin.storage
+    .from("photo-originals")
+    .upload(storagePath, bytes, { contentType: file.mimeType, upsert: true });
+  if (originalError) {
+    if (isDev) {
+      console.error("[upsertCustomerPhotoToStorage] original upload failed", {
+        bucket: "photo-originals",
+        path: storagePath,
+        message: originalError.message,
+        name: originalError.name,
+        status: (originalError as { status?: number; statusCode?: string }).status,
+        statusCode: (originalError as { statusCode?: string }).statusCode,
+      });
+    } else {
+      console.error("[upsertCustomerPhotoToStorage] original upload failed:", originalError.message);
+    }
+    throw new OrderValidationError(
+      "We couldn't securely store your photos. Please try again in a moment.",
+    );
+  }
+  if (isDev) console.info("[upsertCustomerPhotoToStorage] original upload ok", { storagePath });
+
+  const { error: previewError } = await supabaseAdmin.storage
+    .from("photo-previews")
+    .upload(previewPath, bytes, { contentType: file.mimeType, upsert: true });
+  if (previewError) {
+    if (isDev) {
+      console.error("[upsertCustomerPhotoToStorage] preview upload failed", {
+        bucket: "photo-previews",
+        path: previewPath,
+        message: previewError.message,
+        name: previewError.name,
+        statusCode: (previewError as { statusCode?: string }).statusCode,
+      });
+    } else {
+      console.error("[upsertCustomerPhotoToStorage] preview upload failed:", previewError.message);
+    }
+    // Best-effort cleanup of the original we just wrote so we don't leave orphans
+    // for an order that will not be created.
+    await supabaseAdmin.storage.from("photo-originals").remove([storagePath]);
+    throw new OrderValidationError(
+      "We couldn't securely store your photos. Please try again in a moment.",
+    );
+  }
+  if (isDev) console.info("[upsertCustomerPhotoToStorage] preview upload ok", { previewPath });
+
+  // Confirm the production original is actually retrievable before accepting the order.
+  const { data: verified, error: verifyError } = await supabaseAdmin.storage
+    .from("photo-originals")
+    .createSignedUrl(storagePath, 60);
+  if (verifyError || !verified?.signedUrl) {
+    if (isDev) {
+      console.error("[upsertCustomerPhotoToStorage] signed URL verify failed", {
+        bucket: "photo-originals",
+        path: storagePath,
+        message: verifyError?.message ?? "missing signedUrl",
+        statusCode: (verifyError as { statusCode?: string } | null)?.statusCode,
+      });
+    } else {
+      console.error(
+        "[upsertCustomerPhotoToStorage] original verify failed:",
+        verifyError?.message ?? "missing signedUrl",
+      );
+    }
+    throw new OrderValidationError(
+      "We couldn't verify your photos were stored. Please try again in a moment.",
+    );
+  }
+  if (isDev) console.info("[upsertCustomerPhotoToStorage] signed URL verify ok", { storagePath });
 
   const existing = await sql<{ id: string }[]>`
     select id from public.photos
@@ -590,58 +699,59 @@ async function upsertCustomerPhoto(
       and photo_number = ${file.photoNumber}
     limit 1
   `;
+
+  let photoId: string;
   if (existing[0]?.id) {
+    photoId = existing[0].id;
     await sql`
       update public.photos
       set original_file_name = coalesce(${file.fileName}, original_file_name),
-          original_path = coalesce(${canUseStorage ? storagePath : null}, original_path),
-          preview_url = case
-            when ${canUseStorage} then ${previewPath}
-            else preview_url
-          end,
+          original_path = ${storagePath},
+          preview_url = ${previewPath},
+          width = coalesce(${file.width || null}, width),
+          height = coalesce(${file.height || null}, height),
           deleted_at = null
-      where id = ${existing[0].id}::uuid
+      where id = ${photoId}::uuid
     `;
-    await sql`
-      insert into public.print_file_blobs (photo_id, mime_type, file_name, content)
-      values (
-        ${existing[0].id}::uuid,
-        ${file.mimeType},
+  } else {
+    const inserted = await sql<{ id: string }[]>`
+      insert into public.photos (
+        event_id, photo_number, preview_url, original_path, original_file_name, width, height
+      ) values (
+        ${CUSTOMER_UPLOAD_EVENT_ID}::uuid,
+        ${file.photoNumber},
+        ${previewPath},
+        ${storagePath},
         ${file.fileName},
-        ${bytes}
+        ${file.width || null},
+        ${file.height || null}
       )
-      on conflict (photo_id) do update
-      set mime_type = excluded.mime_type,
-          file_name = excluded.file_name,
-          content = excluded.content
+      returning id
     `;
-    return existing[0].id;
+    photoId = inserted[0]!.id;
   }
 
-  const inserted = await sql<{ id: string }[]>`
-    insert into public.photos (
-      event_id, photo_number, preview_url, original_path, original_file_name, width, height
-    ) values (
-      ${CUSTOMER_UPLOAD_EVENT_ID}::uuid,
-      ${file.photoNumber},
-      ${canUseStorage ? previewPath : `blob://${file.photoId}`},
-      ${canUseStorage ? storagePath : null},
-      ${file.fileName},
-      ${file.width || null},
-      ${file.height || null}
-    )
-    returning id
-  `;
-  const photoId = inserted[0]!.id;
+  // New production flow is Storage-only. Drop any leftover legacy Postgres binary
+  // for this photo so capacity is not wasted after a successful Storage write.
+  await sql`delete from public.print_file_blobs where photo_id = ${photoId}::uuid`;
 
-  await sql`
-    insert into public.print_file_blobs (photo_id, mime_type, file_name, content)
-    values (${photoId}::uuid, ${file.mimeType}, ${file.fileName}, ${bytes})
-    on conflict (photo_id) do update
-    set mime_type = excluded.mime_type,
-        file_name = excluded.file_name,
-        content = excluded.content
+  const check = await sql<{ original_path: string | null; preview_url: string }[]>`
+    select original_path, preview_url from public.photos where id = ${photoId}::uuid limit 1
   `;
+  const row = check[0];
+  if (
+    !row?.original_path ||
+    row.original_path.startsWith("blob://") ||
+    row.original_path.startsWith("http://") ||
+    row.original_path.startsWith("https://") ||
+    !row.original_path.includes("customer-uploads/") ||
+    !row.preview_url ||
+    row.preview_url.startsWith("blob://")
+  ) {
+    throw new OrderValidationError(
+      "We couldn't securely store your photos. Please try again in a moment.",
+    );
+  }
 
   return photoId;
 }

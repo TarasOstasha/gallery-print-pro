@@ -94,17 +94,33 @@ function AdminOrderDetailPage() {
     if (!detail) return;
     setBusyPhotoId(photoId);
     try {
-      const { url, fileName } = await getAdminPhotoDownloadUrl({
+      const result = await getAdminPhotoDownloadUrl({
         data: { orderId: detail.order.id, photoId },
       });
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName;
-      a.rel = "noopener";
-      a.target = "_blank";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      if (result.source === "storage") {
+        const a = document.createElement("a");
+        a.href = result.url;
+        a.download = result.fileName;
+        a.rel = "noopener";
+        a.target = "_blank";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } else {
+        // LEGACY: older orders that only have print_file_blobs.
+        const binary = atob(result.base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+        const blob = new Blob([bytes], { type: result.mimeType });
+        const objectUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = objectUrl;
+        a.download = result.fileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(objectUrl);
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Download failed");
     } finally {

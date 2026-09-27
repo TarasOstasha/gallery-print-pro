@@ -261,7 +261,6 @@ export const getAdminOrderDetail = createServerFn({ method: "POST" })
     const { supabase } = context;
     const {
       classifyPhotoStorage,
-      isCustomerStoragePath,
       findBlockingOrderNumbers,
     } = await import("@/server/photo-storage.server");
 
@@ -374,8 +373,7 @@ export const getAdminOrderDetail = createServerFn({ method: "POST" })
           }
         }
 
-        const canDownloadOriginal =
-          photoStatus === "available" && isCustomerStoragePath(photo?.original_path ?? null);
+        const canDownloadOriginal = photoStatus === "available";
         const blocking = item.photo_id ? (blockingByPhoto.get(item.photo_id) ?? []) : [];
         const canDeleteStoredPhoto = photoStatus === "available" && blocking.length === 0;
 

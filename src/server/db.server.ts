@@ -21,18 +21,39 @@ loadEnv();
 
 /** Returns true when SUPABASE_SERVICE_ROLE_KEY looks like a real service role secret. */
 export function isServiceRoleKey(value: string | undefined): boolean {
-  if (!value) return false;
-  if (value.startsWith("sb_secret_")) return true;
-  if (value.split(".").length !== 3) return false;
+  return describeServiceRoleKey(value).ok;
+}
+
+/** Safe metadata about a Supabase key (never includes the secret itself). */
+export function describeServiceRoleKey(value: string | undefined): {
+  ok: boolean;
+  present: boolean;
+  kind: string;
+} {
+  if (!value) return { ok: false, present: false, kind: "missing" };
+  if (value.startsWith("sb_secret_")) {
+    return { ok: true, present: true, kind: "sb_secret_" };
+  }
+  if (value.startsWith("sb_publishable_")) {
+    return { ok: false, present: true, kind: "sb_publishable_" };
+  }
+  if (value.split(".").length !== 3) {
+    return { ok: false, present: true, kind: "non_jwt" };
+  }
   try {
     const payload = JSON.parse(
       Buffer.from(value.split(".")[1]!.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString(
         "utf8",
       ),
     ) as { role?: string };
-    return payload.role === "service_role";
+    const role = payload.role ?? "unknown";
+    return {
+      ok: role === "service_role",
+      present: true,
+      kind: `jwt:${role}`,
+    };
   } catch {
-    return false;
+    return { ok: false, present: true, kind: "jwt_unparseable" };
   }
 }
 

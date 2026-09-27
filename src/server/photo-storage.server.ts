@@ -44,7 +44,7 @@ export function classifyPhotoStorage(photo: {
   if (isCustomerStoragePath(photo.originalPath) || isCustomerStoragePath(photo.previewUrl)) {
     return "available";
   }
-  // Blob-only fallback still counts as stored until deleted (bytes in print_file_blobs).
+  // LEGACY: blob:// hint means bytes may still live in print_file_blobs.
   if (photo.previewUrl?.startsWith("blob://")) return "available";
   return "none";
 }
@@ -200,7 +200,7 @@ export async function deletePhotoAssetsForOrder(opts: {
   const hasBlobHint = photo.previewUrl?.startsWith("blob://") === true;
 
   if (!hasOriginal && !hasPreview && !hasBlobHint) {
-    // Nothing in customer Storage; still clear any leftover blob and stamp deleted if blob existed.
+    // Nothing in customer Storage; still clear any leftover legacy blob.
     const blobErr = await clearPrintFileBlob(photo.id);
     if (blobErr) {
       throw new Error(`Could not clear stored blob: ${blobErr}`);
@@ -213,18 +213,18 @@ export async function deletePhotoAssetsForOrder(opts: {
     };
   }
 
-  const admin = await getAdminStorageClient();
+  const admin = hasOriginal || hasPreview ? await getAdminStorageClient() : null;
   const warnings: string[] = [];
   let originalOk = !hasOriginal;
   let previewOk = !hasPreview;
 
-  if (hasOriginal && photo.originalPath) {
+  if (hasOriginal && photo.originalPath && admin) {
     const res = await removeStorageObject(admin, ORIGINALS_BUCKET, photo.originalPath);
     originalOk = res.ok;
     if (!res.ok) throw new Error(`Failed to delete original: ${res.error}`);
   }
 
-  if (hasPreview && photo.previewUrl) {
+  if (hasPreview && photo.previewUrl && admin) {
     const res = await removeStorageObject(admin, PREVIEWS_BUCKET, photo.previewUrl);
     previewOk = res.ok;
     if (!res.ok) {
@@ -237,7 +237,7 @@ export async function deletePhotoAssetsForOrder(opts: {
     warnings.push(`Storage cleared but print_file_blobs cleanup failed: ${blobErr}`);
   }
 
-  // Mark deleted only after original (or sole blob) removal succeeded.
+  // Mark deleted after Storage original removal (or legacy blob-only cleanup).
   if (!originalOk && hasOriginal) {
     throw new Error("Original deletion failed; photo was not marked deleted");
   }
@@ -261,10 +261,6 @@ export async function deletePhotoAssetsForOrder(opts: {
     );
   }
 
-  if (!previewOk) {
-    // Partial failure already in warnings — still return deleted with warnings.
-  }
-
   return {
     photoId: photo.id,
     status: "deleted",
@@ -277,7 +273,10 @@ export async function createOriginalDownloadUrl(opts: {
   supabase: { from: (t: string) => any };
   orderId: string;
   photoId: string;
-}): Promise<{ url: string; fileName: string }> {
+}): Promise<
+  | { source: "storage"; url: string; fileName: string }
+  | { source: "legacy_blob"; base64: string; mimeType: string; fileName: string }
+> {
   // Validate membership on this order before signing.
   const { data: item, error: itemError } = await opts.supabase
     .from("order_items")
@@ -292,24 +291,61 @@ export async function createOriginalDownloadUrl(opts: {
   const photo = await loadPhotoAsset(opts.supabase, opts.photoId);
   if (!photo) throw new Error("Photo not found");
   if (photo.deletedAt) throw new Error("Stored photo was already deleted");
-  if (!isCustomerStoragePath(photo.originalPath) || !photo.originalPath) {
-    throw new Error("No stored original available for download");
-  }
-
-  const admin = await getAdminStorageClient();
-  const { data: signed, error } = await admin.storage
-    .from(ORIGINALS_BUCKET)
-    .createSignedUrl(photo.originalPath, 60 * 10);
-  if (error || !signed?.signedUrl) {
-    throw new Error(error?.message ?? "Could not create download URL");
-  }
 
   const fileName =
     photo.originalFileName ||
-    photo.originalPath.split("/").pop() ||
+    (photo.originalPath ? photo.originalPath.split("/").pop() : null) ||
     `${photo.photoNumber}.jpg`;
 
-  return { url: signed.signedUrl, fileName };
+  // NEW PRODUCTION FLOW — signed URL from photo-originals.
+  if (isCustomerStoragePath(photo.originalPath) && photo.originalPath) {
+    const admin = await getAdminStorageClient();
+    const { data: signed, error } = await admin.storage
+      .from(ORIGINALS_BUCKET)
+      .createSignedUrl(photo.originalPath, 60 * 10);
+    if (error || !signed?.signedUrl) {
+      throw new Error(error?.message ?? "Could not create download URL");
+    }
+    return { source: "storage", url: signed.signedUrl, fileName };
+  }
+
+  // LEGACY FALLBACK — older orders that only have print_file_blobs.
+  const legacy = await loadLegacyPrintFileBlob(photo.id);
+  if (legacy) {
+    return {
+      source: "legacy_blob",
+      base64: legacy.base64,
+      mimeType: legacy.mimeType,
+      fileName: legacy.fileName || fileName,
+    };
+  }
+
+  throw new Error("No stored original available for download");
+}
+
+async function loadLegacyPrintFileBlob(
+  photoId: string,
+): Promise<{ base64: string; mimeType: string; fileName: string } | null> {
+  const sql = createDb();
+  try {
+    const rows = await sql<{ mime_type: string; file_name: string; content: Buffer }[]>`
+      select mime_type, file_name, content
+      from public.print_file_blobs
+      where photo_id = ${photoId}::uuid
+      limit 1
+    `;
+    const row = rows[0];
+    if (!row?.content) return null;
+    return {
+      mimeType: row.mime_type,
+      fileName: row.file_name,
+      base64: Buffer.from(row.content).toString("base64"),
+    };
+  } catch {
+    return null;
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
 }
 
 /** Photos eligible for future automatic retention cleanup (dry-run friendly). */
