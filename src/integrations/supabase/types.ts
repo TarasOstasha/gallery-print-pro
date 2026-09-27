@@ -94,6 +94,8 @@ export type Database = {
       order_items: {
         Row: {
           created_at: string
+          crop_x: number
+          crop_y: number
           has_border: boolean
           id: string
           line_total_cents: number
@@ -111,6 +113,8 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          crop_x?: number
+          crop_y?: number
           has_border?: boolean
           id?: string
           line_total_cents: number
@@ -128,6 +132,8 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          crop_x?: number
+          crop_y?: number
           has_border?: boolean
           id?: string
           line_total_cents?: number
@@ -184,6 +190,8 @@ export type Database = {
           shipping_method_code: string | null
           subtotal_cents: number
           tax_cents: number
+          terms_accepted: boolean
+          terms_accepted_at: string | null
           total_cents: number
           updated_at: string
         }
@@ -203,6 +211,8 @@ export type Database = {
           shipping_method_code?: string | null
           subtotal_cents?: number
           tax_cents?: number
+          terms_accepted?: boolean
+          terms_accepted_at?: string | null
           total_cents?: number
           updated_at?: string
         }
@@ -222,6 +232,8 @@ export type Database = {
           shipping_method_code?: string | null
           subtotal_cents?: number
           tax_cents?: number
+          terms_accepted?: boolean
+          terms_accepted_at?: string | null
           total_cents?: number
           updated_at?: string
         }

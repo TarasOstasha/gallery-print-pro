@@ -8,12 +8,31 @@ import {
   unitPriceCents,
   type ResolvedPrintSku,
 } from "@/lib/print-catalog";
+import { DEFAULT_CROP_X, DEFAULT_CROP_Y, clampCropPercent } from "@/lib/print-preview";
 
 export const CUSTOMER_UPLOAD_EVENT_ID = "33333333-3333-4333-8333-333333333333";
+
+/** Merchandise subtotal minimum (cents). Shipping/tax do not count. */
+export const MIN_ORDER_SUBTOTAL_CENTS = 2000;
+
+export class OrderValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "OrderValidationError";
+  }
+}
+
+export function isOrderValidationError(error: unknown): boolean {
+  return (
+    error instanceof OrderValidationError ||
+    (error instanceof Error && error.name === "OrderValidationError")
+  );
+}
 
 export type CreateOrderInput = {
   fulfillment: "shipping" | "studio_pickup";
   shippingMethodCode: string | null;
+  termsAccepted: boolean;
   customer: {
     firstName: string;
     lastName: string;
@@ -36,6 +55,8 @@ export type CreateOrderInput = {
     quantity: number;
     border?: boolean;
     mountingId?: string;
+    cropX?: number;
+    cropY?: number;
   }>;
   photoFiles: Array<{
     photoId: string;
@@ -66,6 +87,61 @@ export type CreateOrderResult = {
 
 function decodeBase64(data: string): Uint8Array {
   return new Uint8Array(Buffer.from(data, "base64"));
+}
+
+function normalizeCropPercent(value: unknown, fallback: number, label: string): number {
+  const raw = typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  const clamped = clampCropPercent(raw);
+  if (clamped !== raw && typeof value === "number" && Number.isFinite(value)) {
+    // Allow tiny float noise inside 0–100; reject out-of-range values.
+  }
+  if (typeof value === "number" && Number.isFinite(value) && (value < 0 || value > 100)) {
+    throw new OrderValidationError(`${label} must be between 0 and 100.`);
+  }
+  if (value !== undefined && value !== null && typeof value !== "number") {
+    throw new OrderValidationError(`Invalid ${label}.`);
+  }
+  return clamped;
+}
+
+/** Terms + crop shape checks (no pricing). Safe to call before DB writes. */
+export function assertOrderRequestGates(input: CreateOrderInput): void {
+  if (input.termsAccepted !== true) {
+    throw new OrderValidationError("Please agree to the Print Cancellation Policy & Terms.");
+  }
+  if (!input.items?.length) {
+    throw new OrderValidationError("Your cart is empty.");
+  }
+  for (const item of input.items) {
+    if (!item.quantity || item.quantity < 1) {
+      throw new OrderValidationError("Invalid item quantity.");
+    }
+    normalizeCropPercent(item.cropX, DEFAULT_CROP_X, "cropX");
+    normalizeCropPercent(item.cropY, DEFAULT_CROP_Y, "cropY");
+  }
+}
+
+/** Catalog-only merchandise subtotal (no shipping/tax). Used for local fallback gates. */
+export function merchandiseSubtotalFromCatalog(items: CreateOrderInput["items"]): number {
+  let subtotalCents = 0;
+  for (const item of items) {
+    const sku = resolvePrintSku(item.productVariantId);
+    if (!sku) {
+      throw new OrderValidationError(`Unavailable product for ${item.sizeLabel || "selection"}.`);
+    }
+    const mounting = resolveMounting(sku.sizeLabel, item.mountingId || "print-only");
+    if (!mounting) {
+      throw new OrderValidationError(`Unavailable mounting for ${sku.sizeLabel}.`);
+    }
+    subtotalCents += unitPriceCents(sku.priceCents, mounting.priceCents) * item.quantity;
+  }
+  return subtotalCents;
+}
+
+export function assertMinimumMerchandiseSubtotal(subtotalCents: number): void {
+  if (subtotalCents < MIN_ORDER_SUBTOTAL_CENTS) {
+    throw new OrderValidationError("Minimum order is $20.00.");
+  }
 }
 
 async function resolveSkuForItem(
@@ -165,6 +241,8 @@ async function ensureProductVariantId(
  * otherwise stores file bytes in print_file_blobs for studio fulfillment.
  */
 export async function createOrderInDatabase(input: CreateOrderInput): Promise<CreateOrderResult> {
+  assertOrderRequestGates(input);
+
   const sql = createDb();
   try {
     await sql`
@@ -214,6 +292,8 @@ export async function createOrderInDatabase(input: CreateOrderInput): Promise<Cr
       photoNumber: string;
       sizeLabel: string;
       productName: string;
+      cropX: number;
+      cropY: number;
     }> = [];
 
     for (const item of input.items) {
@@ -228,6 +308,8 @@ export async function createOrderInDatabase(input: CreateOrderInput): Promise<Cr
       const mountingPriceCents = mounting.priceCents;
       const lineUnit = unitPriceCents(printPriceCents, mountingPriceCents);
       const variantId = await ensureProductVariantId(sql, sku);
+      const cropX = normalizeCropPercent(item.cropX, DEFAULT_CROP_X, "cropX");
+      const cropY = normalizeCropPercent(item.cropY, DEFAULT_CROP_Y, "cropY");
       const productName = [
         sku.displayName,
         hasBorder ? "White border" : null,
@@ -249,13 +331,33 @@ export async function createOrderInDatabase(input: CreateOrderInput): Promise<Cr
         photoNumber: item.photoNumber,
         sizeLabel: sku.sizeLabel,
         productName,
+        cropX,
+        cropY,
       });
     }
 
-    const shippingCents =
-      input.fulfillment === "shipping" && input.shippingMethodCode
-        ? (shippingPrices.get(input.shippingMethodCode) ?? 0)
-        : 0;
+    // Authoritative merchandise subtotal — shipping/tax must not satisfy the minimum.
+    assertMinimumMerchandiseSubtotal(subtotalCents);
+
+    let shippingCents = 0;
+    let shippingMethodCode: string | null = input.shippingMethodCode;
+    if (input.fulfillment === "studio_pickup") {
+      // Pickup is paid online later (Stripe) — never pay-at-pickup, never charged shipping.
+      shippingCents = 0;
+      shippingMethodCode = null;
+    } else if (input.fulfillment === "shipping") {
+      if (!input.shippingMethodCode) {
+        throw new OrderValidationError("Please select a shipping method.");
+      }
+      if (!shippingPrices.has(input.shippingMethodCode)) {
+        throw new OrderValidationError("Invalid shipping method.");
+      }
+      shippingCents = shippingPrices.get(input.shippingMethodCode)!;
+      shippingMethodCode = input.shippingMethodCode;
+    } else {
+      throw new OrderValidationError("Invalid delivery method.");
+    }
+
     const taxCents = Math.round((subtotalCents + shippingCents) * taxRate);
     const totalCents = subtotalCents + shippingCents + taxCents;
 
@@ -299,28 +401,7 @@ export async function createOrderInDatabase(input: CreateOrderInput): Promise<Cr
     `;
     const orderNumber = String(orderNumberRows[0]!.n);
 
-    const orderRows = await sql<{ id: string; access_token: string }[]>`
-      insert into public.orders (
-        order_number, customer_id, subtotal_cents, shipping_cents, tax_cents, total_cents,
-        fulfillment_method, shipping_method_code, payment_status, order_status, fulfillment_provider
-      ) values (
-        ${orderNumber},
-        ${customerId}::uuid,
-        ${subtotalCents},
-        ${shippingCents},
-        ${taxCents},
-        ${totalCents},
-        ${input.fulfillment}::public.fulfillment_method,
-        ${input.shippingMethodCode},
-        'paid'::public.payment_status,
-        'new'::public.order_status,
-        'manual_studio'
-      )
-      returning id, access_token
-    `;
-    const order = orderRows[0]!;
-
-    // Ensure optional border/mounting snapshot columns exist (migration 0003).
+    // Ensure optional columns exist before insert (migrations 0003 / 0004).
     await sql`
       alter table public.order_items
         add column if not exists has_border boolean not null default false
@@ -337,6 +418,46 @@ export async function createOrderInDatabase(input: CreateOrderInput): Promise<Cr
       alter table public.order_items
         add column if not exists print_price_cents integer
     `;
+    await sql`
+      alter table public.order_items
+        add column if not exists crop_x double precision not null default 50
+    `;
+    await sql`
+      alter table public.order_items
+        add column if not exists crop_y double precision not null default 50
+    `;
+    await sql`
+      alter table public.orders
+        add column if not exists terms_accepted boolean not null default false
+    `;
+    await sql`
+      alter table public.orders
+        add column if not exists terms_accepted_at timestamptz
+    `;
+
+    const orderRows = await sql<{ id: string; access_token: string }[]>`
+      insert into public.orders (
+        order_number, customer_id, subtotal_cents, shipping_cents, tax_cents, total_cents,
+        fulfillment_method, shipping_method_code, payment_status, order_status, fulfillment_provider,
+        terms_accepted, terms_accepted_at
+      ) values (
+        ${orderNumber},
+        ${customerId}::uuid,
+        ${subtotalCents},
+        ${shippingCents},
+        ${taxCents},
+        ${totalCents},
+        ${input.fulfillment}::public.fulfillment_method,
+        ${shippingMethodCode},
+        'paid'::public.payment_status,
+        'new'::public.order_status,
+        'manual_studio',
+        true,
+        now()
+      )
+      returning id, access_token
+    `;
+    const order = orderRows[0]!;
 
     for (const line of lineItems) {
       const photoId = photoIdMap.get(line.clientPhotoId);
@@ -345,7 +466,8 @@ export async function createOrderInDatabase(input: CreateOrderInput): Promise<Cr
         insert into public.order_items (
           order_id, photo_id, product_variant_id, quantity, unit_price_cents, line_total_cents,
           photo_number_snapshot, product_name_snapshot, size_label_snapshot,
-          has_border, mounting_code, mounting_price_cents, print_price_cents
+          has_border, mounting_code, mounting_price_cents, print_price_cents,
+          crop_x, crop_y
         ) values (
           ${order.id}::uuid,
           ${photoId}::uuid,
@@ -359,7 +481,9 @@ export async function createOrderInDatabase(input: CreateOrderInput): Promise<Cr
           ${line.hasBorder},
           ${line.mountingCode},
           ${line.mountingPriceCents},
-          ${line.printPriceCents}
+          ${line.printPriceCents},
+          ${line.cropX},
+          ${line.cropY}
         )
       `;
     }
@@ -395,7 +519,7 @@ export async function createOrderInDatabase(input: CreateOrderInput): Promise<Cr
     const fulfillment = await getFulfillmentProvider().submitOrder({
       orderNumber,
       fulfillmentMethod: input.fulfillment,
-      shippingMethodCode: input.shippingMethodCode,
+      shippingMethodCode,
       items: lineItems.map((line) => ({
         photoId: photoIdMap.get(line.clientPhotoId)!,
         photoNumber: line.photoNumber,
@@ -428,7 +552,7 @@ export async function createOrderInDatabase(input: CreateOrderInput): Promise<Cr
 
     return {
       orderNumber,
-      accessToken: order.access_token,
+      accessToken: order.access_token == null ? "" : String(order.access_token),
       subtotalCents,
       shippingCents,
       taxCents,
@@ -513,10 +637,20 @@ async function upsertCustomerPhoto(
 export function buildLocalOrder(input: CreateOrderInput): CreateOrderResult {
   const orderNumber = String(Math.floor(10000 + Math.random() * 89999));
   const accessToken = crypto.randomUUID();
+  const shippingCents = input.fulfillment === "studio_pickup" ? 0 : input.totals.shippingCents;
+  const subtotalCents = input.totals.subtotalCents;
+  const taxCents = input.totals.taxCents;
+  const totalCents =
+    input.fulfillment === "studio_pickup"
+      ? subtotalCents + taxCents
+      : input.totals.totalCents;
   return {
     orderNumber,
     accessToken,
-    ...input.totals,
+    subtotalCents,
+    shippingCents,
+    taxCents,
+    totalCents,
     persisted: "local",
   };
 }

@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Building2, Check, Truck } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import {
@@ -9,7 +9,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { shippingMethods, studio } from "@/lib/catalog";
+import { getGalleryData } from "@/lib/catalog.functions";
+import {
+  shippingMethods as fallbackShippingMethods,
+  studio as fallbackStudio,
+} from "@/lib/catalog";
 import { useCart } from "@/lib/cart";
 import { formatCents } from "@/lib/money";
 import { getCustomerPhotoOriginalBase64 } from "@/lib/customer-photos";
@@ -25,6 +29,13 @@ export const Route = createFileRoute("/checkout")({ component: Checkout });
 
 const MIN_ORDER_CENTS = 2000;
 
+type CheckoutShippingMethod = {
+  code: string;
+  name: string;
+  detail: string;
+  priceCents: number;
+};
+
 const input =
   "mt-2 w-full rounded-xl border bg-card px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#039333]";
 
@@ -32,13 +43,47 @@ function Checkout() {
   const { items, subtotalCents, clear } = useCart();
   const nav = useNavigate();
   const [fulfillment, setFulfillment] = useState<"shipping" | "studio_pickup">("shipping");
-  const [shipping, setShipping] = useState("standard");
+  const [shippingMethods, setShippingMethods] = useState<CheckoutShippingMethod[]>(
+    fallbackShippingMethods.map((m) => ({
+      code: m.code,
+      name: m.name,
+      detail: m.detail,
+      priceCents: m.priceCents,
+    })),
+  );
+  const [taxRate, setTaxRate] = useState(fallbackStudio.taxRate);
+  const [shipping, setShipping] = useState(fallbackShippingMethods[0]?.code ?? "standard");
   const [submitting, setSubmitting] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [policyOpen, setPolicyOpen] = useState(false);
-  const ship =
-    fulfillment === "shipping" ? shippingMethods.find((m) => m.code === shipping)!.priceCents : 0;
-  const tax = Math.round((subtotalCents + ship) * studio.taxRate);
+
+  useEffect(() => {
+    void getGalleryData()
+      .then((data) => {
+        if (data.shippingMethods.length > 0) {
+          const methods = data.shippingMethods.map((m) => ({
+            code: m.code,
+            name: m.name,
+            detail: m.estimatedDays || m.description || "",
+            priceCents: m.priceCents,
+          }));
+          setShippingMethods(methods);
+          setShipping((current) =>
+            methods.some((m) => m.code === current) ? current : methods[0]!.code,
+          );
+        }
+        if (data.studio && Number.isFinite(data.studio.taxRate)) {
+          setTaxRate(data.studio.taxRate);
+        }
+      })
+      .catch(() => {
+        /* keep hard-coded catalog fallbacks for display only */
+      });
+  }, []);
+
+  const selectedShip = shippingMethods.find((m) => m.code === shipping);
+  const ship = fulfillment === "shipping" ? (selectedShip?.priceCents ?? 0) : 0;
+  const tax = Math.round((subtotalCents + ship) * taxRate);
   const total = subtotalCents + ship + tax;
   const meetsMinimum = subtotalCents >= MIN_ORDER_CENTS;
   const canPlaceOrder = meetsMinimum && termsAccepted && !submitting;
@@ -80,6 +125,7 @@ function Checkout() {
       const payload = {
         fulfillment,
         shippingMethodCode: fulfillment === "shipping" ? shipping : null,
+        termsAccepted,
         customer: {
           firstName: data.firstName!,
           lastName: data.lastName!,
@@ -105,6 +151,8 @@ function Checkout() {
           quantity: i.quantity,
           border: Boolean(i.border),
           mountingId: i.mountingId || "print-only",
+          cropX: i.cropX,
+          cropY: i.cropY,
         })),
         photoFiles,
         totals: { subtotalCents, shippingCents: ship, taxCents: tax, totalCents: total },
@@ -112,16 +160,22 @@ function Checkout() {
 
       const result = await placeOrder({ data: payload });
 
+      // Clear cart only after a successful placeOrder response.
+      // Production never returns a local/fake order on DB failure.
       if (result.persisted === "local") {
+        if (!import.meta.env.DEV) {
+          toast.error("Could not place order. Try again.");
+          return;
+        }
         saveLocalOrder({
           orderNumber: result.orderNumber,
           accessToken: result.accessToken,
           fulfillment,
           shippingMethodCode: fulfillment === "shipping" ? shipping : null,
-          subtotalCents,
-          shippingCents: ship,
-          taxCents: tax,
-          totalCents: total,
+          subtotalCents: result.subtotalCents,
+          shippingCents: result.shippingCents,
+          taxCents: result.taxCents,
+          totalCents: result.totalCents,
           paymentStatus: "paid",
           orderStatus: "new",
           createdAt: new Date().toISOString(),
@@ -130,24 +184,47 @@ function Checkout() {
           items,
         });
       } else {
+        // Preserve secure receipt credentials before navigation (sync sessionStorage).
+        const orderNumber = String(result.orderNumber);
+        const accessToken = String(result.accessToken);
         sessionStorage.setItem(
-          `order-${result.orderNumber}`,
+          `order-${orderNumber}`,
           JSON.stringify({
-            number: result.orderNumber,
-            accessToken: result.accessToken,
+            number: orderNumber,
+            accessToken,
             fulfillment,
             total: result.totalCents,
+            subtotal: result.subtotalCents,
+            shipping: result.shippingCents,
+            tax: result.taxCents,
+            persisted: "database",
             data,
             items,
           }),
         );
+        clear();
+        void nav({ to: "/confirmation/$orderNumber", params: { orderNumber } });
+        return;
       }
 
       clear();
-      void nav({ to: "/confirmation/$orderNumber", params: { orderNumber: result.orderNumber } });
+      void nav({ to: "/confirmation/$orderNumber", params: { orderNumber: String(result.orderNumber) } });
     } catch (err) {
       console.error(err);
-      toast.error("Could not place order. Try again.");
+      const message =
+        err instanceof Error && err.message
+          ? err.message.replace(/^VALIDATION:\s*/i, "")
+          : "Could not place order. Try again.";
+      const known =
+        message.includes("Minimum order") ||
+        message.includes("Print Cancellation") ||
+        message.includes("crop") ||
+        message.includes("cart is empty") ||
+        message.includes("Unavailable") ||
+        message.includes("shipping method") ||
+        message.includes("delivery method");
+      toast.error(known ? message : "Could not place order. Try again.");
+      // Do not clear cart on failure.
     } finally {
       setSubmitting(false);
     }
@@ -246,15 +323,15 @@ function Checkout() {
               <div className="mt-10 rounded-2xl bg-accent p-6">
                 <div className="flex items-center gap-2 text-[#039333]">
                   <Check size={18} />
-                  <span className="label-mono">Studio pickup · Free</span>
+                  <span className="label-mono">Studio pickup · $0.00 shipping</span>
                 </div>
-                <strong className="mt-4 block">{studio.name}</strong>
+                <strong className="mt-4 block">{fallbackStudio.name}</strong>
                 <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                  {studio.address}
+                  {fallbackStudio.address}
                   <br />
-                  {studio.cityLine}
+                  {fallbackStudio.cityLine}
                   <br />
-                  {studio.country}
+                  {fallbackStudio.country}
                 </p>
                 <p className="mt-4 text-sm">We’ll email you when your prints are ready.</p>
               </div>
@@ -281,7 +358,7 @@ function Checkout() {
             <Row label="Subtotal" value={formatCents(subtotalCents)} />
             <Row
               label={fulfillment === "shipping" ? "Shipping" : "Studio pickup"}
-              value={ship ? formatCents(ship) : "FREE"}
+              value={formatCents(ship)}
             />
             <Row label="Tax" value={formatCents(tax)} />
             <div className="flex justify-between border-t border-white/15 pt-4 text-lg">

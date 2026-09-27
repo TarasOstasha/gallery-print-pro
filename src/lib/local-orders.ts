@@ -35,6 +35,10 @@ export function saveLocalOrder(order: LocalOrderRecord): void {
       accessToken: order.accessToken,
       fulfillment: order.fulfillment,
       total: order.totalCents,
+      subtotal: order.subtotalCents,
+      shipping: order.shippingCents,
+      tax: order.taxCents,
+      persisted: "local",
       data: {
         firstName: order.customer.firstName,
         lastName: order.customer.lastName,
