@@ -162,6 +162,15 @@ function parseSizeLabel(label: string): { width: number; height: number } {
   return { width: Number(match[1]), height: Number(match[2]) };
 }
 
+/** Safe print dimensions from a cart size label (e.g. "8x10"). Falls back to default preview size. */
+export function printDimensionsFromLabel(label: string): { width: number; height: number } {
+  try {
+    return parseSizeLabel(label);
+  } catch {
+    return { width: DEFAULT_PREVIEW_SIZE.width, height: DEFAULT_PREVIEW_SIZE.height };
+  }
+}
+
 function sizeId(productId: string, finishId: string, label: string) {
   return `${productId}:${finishId}:${label}`;
 }

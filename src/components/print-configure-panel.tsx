@@ -1,7 +1,13 @@
 import { Link } from "@tanstack/react-router";
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { X } from "lucide-react";
 import { formatCents } from "@/lib/money";
-import { resolutionWarning } from "@/lib/print-preview";
+import {
+  canRepositionCrop,
+  clampCropPercent,
+  cropFrameAspect,
+  resolutionWarning,
+} from "@/lib/print-preview";
 import {
   DEFAULT_PREVIEW_SIZE,
   MOUNTING_IDS,
@@ -29,12 +35,15 @@ type Props = {
   border: boolean;
   mountingId: MountingId | string;
   quantity: number;
+  cropX: number;
+  cropY: number;
   onProductId: (id: string) => void;
   onFinishId: (id: string) => void;
   onSizeId: (id: string) => void;
   onBorder: (value: boolean) => void;
   onMountingId: (id: string) => void;
   onQuantity: (qty: number) => void;
+  onCropChange: (cropX: number, cropY: number) => void;
   onClose: () => void;
   onAdd: () => void;
 };
@@ -54,12 +63,15 @@ export function PrintConfigurePanel({
   border,
   mountingId,
   quantity,
+  cropX,
+  cropY,
   onProductId,
   onFinishId,
   onSizeId,
   onBorder,
   onMountingId,
   onQuantity,
+  onCropChange,
   onClose,
   onAdd,
 }: Props) {
@@ -99,9 +111,14 @@ export function PrintConfigurePanel({
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 md:p-8">
         <PrintPreview
           photoUrl={photoUrl}
+          photoWidth={photoWidth}
+          photoHeight={photoHeight}
           width={previewWidth}
           height={previewHeight}
           border={border}
+          cropX={cropX}
+          cropY={cropY}
+          onCropChange={onCropChange}
         />
         {warning && (
           <p className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs leading-5 text-amber-900 dark:text-amber-100">
@@ -265,44 +282,126 @@ function SizeOptionButton({
 
 function PrintPreview({
   photoUrl,
+  photoWidth,
+  photoHeight,
   width,
   height,
   border,
+  cropX,
+  cropY,
+  onCropChange,
 }: {
   photoUrl: string;
+  photoWidth: number;
+  photoHeight: number;
   width: number;
   height: number;
   border: boolean;
+  cropX: number;
+  cropY: number;
+  onCropChange: (cropX: number, cropY: number) => void;
 }) {
   const aspect = width / height;
   const insetTop = border ? `${(PRINT_BORDER_INCHES / height) * 100}%` : "0%";
   const insetSide = border ? `${(PRINT_BORDER_INCHES / width) * 100}%` : "0%";
   // Cap preview height so Product Type stays visible under the header on desktop/mobile.
   const maxPreviewPx = "min(28vh, 220px)";
+  const frameAspect = cropFrameAspect(width, height, PRINT_BORDER_INCHES, border);
+  const repositionable = canRepositionCrop(photoWidth, photoHeight, frameAspect);
+
+  const frameRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    startCropX: number;
+    startCropY: number;
+  } | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  function onPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    if (!repositionable) return;
+    e.preventDefault();
+    const target = e.currentTarget;
+    target.setPointerCapture(e.pointerId);
+    dragRef.current = {
+      pointerId: e.pointerId,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startCropX: cropX,
+      startCropY: cropY,
+    };
+    setDragging(true);
+  }
+
+  function onPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    const frame = frameRef.current;
+    if (!frame) return;
+    const rect = frame.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    // Dragging the image with the pointer: move object-position opposite to delta.
+    const nextX = clampCropPercent(drag.startCropX - ((e.clientX - drag.startClientX) / rect.width) * 100);
+    const nextY = clampCropPercent(drag.startCropY - ((e.clientY - drag.startClientY) / rect.height) * 100);
+    onCropChange(nextX, nextY);
+  }
+
+  function endDrag(e: ReactPointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    dragRef.current = null;
+    setDragging(false);
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* already released */
+    }
+  }
 
   return (
-    <div className="mx-auto flex w-full justify-center rounded-2xl bg-muted p-3">
-      <div
-        className={`relative max-w-full overflow-hidden ${border ? "bg-white" : "bg-transparent"}`}
-        style={{
-          aspectRatio: String(aspect),
-          maxHeight: maxPreviewPx,
-          width: `min(100%, calc(${maxPreviewPx} * ${aspect}))`,
-          height: "auto",
-        }}
-      >
+    <div className="mx-auto w-full">
+      <div className="flex justify-center rounded-2xl bg-muted p-3">
         <div
-          className="absolute overflow-hidden"
+          className={`relative max-w-full overflow-hidden ${border ? "bg-white" : "bg-transparent"}`}
           style={{
-            top: insetTop,
-            bottom: insetTop,
-            left: insetSide,
-            right: insetSide,
+            aspectRatio: String(aspect),
+            maxHeight: maxPreviewPx,
+            width: `min(100%, calc(${maxPreviewPx} * ${aspect}))`,
+            height: "auto",
           }}
         >
-          <img src={photoUrl} alt="Print preview" className="h-full w-full object-cover" />
+          <div
+            ref={frameRef}
+            className={`absolute overflow-hidden ${repositionable ? (dragging ? "cursor-grabbing" : "cursor-grab") : ""}`}
+            style={{
+              top: insetTop,
+              bottom: insetTop,
+              left: insetSide,
+              right: insetSide,
+              touchAction: repositionable ? "none" : undefined,
+            }}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+          >
+            <img
+              src={photoUrl}
+              alt="Print preview"
+              draggable={false}
+              className="pointer-events-none h-full w-full select-none object-cover"
+              style={{
+                objectPosition: `${cropX}% ${cropY}%`,
+              }}
+            />
+          </div>
         </div>
       </div>
+      {repositionable && (
+        <p className="mt-2 text-center text-[11px] text-muted-foreground">Drag photo to adjust crop</p>
+      )}
     </div>
   );
 }

@@ -10,6 +10,7 @@ import {
   type StoredCustomerPhoto,
 } from "@/lib/customer-photos";
 import { loadPrintCatalog, findFinish, findProduct, findSize, MOUNTING_IDS, resolveMounting, unitPriceCents, type PrintCatalog } from "@/lib/print-catalog";
+import { DEFAULT_CROP_X, DEFAULT_CROP_Y } from "@/lib/print-preview";
 import { useCart } from "@/lib/cart";
 import { toast } from "sonner";
 
@@ -27,6 +28,8 @@ function UploadPrintHome() {
   const [border, setBorder] = useState(false);
   const [mountingId, setMountingId] = useState<string>(MOUNTING_IDS.printOnly);
   const [quantity, setQuantity] = useState(1);
+  const [cropX, setCropX] = useState(DEFAULT_CROP_X);
+  const [cropY, setCropY] = useState(DEFAULT_CROP_Y);
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const { addItem } = useCart();
@@ -40,6 +43,11 @@ function UploadPrintHome() {
     void loadPrintCatalog().then(setCatalog);
   }, [loadPhotos]);
 
+  function resetCrop() {
+    setCropX(DEFAULT_CROP_X);
+    setCropY(DEFAULT_CROP_Y);
+  }
+
   function openConfigure(id: string) {
     setConfigureId(id);
     setProductId(null);
@@ -48,6 +56,7 @@ function UploadPrintHome() {
     setBorder(false);
     setMountingId(MOUNTING_IDS.printOnly);
     setQuantity(1);
+    resetCrop();
   }
 
   function selectProduct(id: string) {
@@ -56,6 +65,7 @@ function UploadPrintHome() {
     setSizeId(null);
     setBorder(false);
     setMountingId(MOUNTING_IDS.printOnly);
+    resetCrop();
   }
 
   function selectFinish(id: string) {
@@ -63,11 +73,18 @@ function UploadPrintHome() {
     setSizeId(null);
     setBorder(false);
     setMountingId(MOUNTING_IDS.printOnly);
+    resetCrop();
   }
 
   function selectSize(id: string) {
     setSizeId(id);
     setMountingId(MOUNTING_IDS.printOnly);
+    resetCrop();
+  }
+
+  function onCropChange(nextX: number, nextY: number) {
+    setCropX(nextX);
+    setCropY(nextY);
   }
 
   async function onFiles(files: FileList | null) {
@@ -128,6 +145,8 @@ function UploadPrintHome() {
       mountingPriceCents,
       unitPriceCents: unitPriceCents(printPriceCents, mountingPriceCents),
       quantity,
+      cropX,
+      cropY,
     });
     toast.success(`${active.number} · ${size.label} added to cart`);
     setConfigureId(null);
@@ -137,6 +156,7 @@ function UploadPrintHome() {
     setBorder(false);
     setMountingId(MOUNTING_IDS.printOnly);
     setQuantity(1);
+    resetCrop();
   }
 
   return (
@@ -243,12 +263,15 @@ function UploadPrintHome() {
               border={border}
               mountingId={mountingId}
               quantity={quantity}
+              cropX={cropX}
+              cropY={cropY}
               onProductId={selectProduct}
               onFinishId={selectFinish}
               onSizeId={selectSize}
               onBorder={setBorder}
               onMountingId={setMountingId}
               onQuantity={setQuantity}
+              onCropChange={onCropChange}
               onClose={() => setConfigureId(null)}
               onAdd={addToCart}
             />

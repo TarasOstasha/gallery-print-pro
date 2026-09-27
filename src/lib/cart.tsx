@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { MOUNTING_IDS, type MountingId } from "@/lib/print-catalog";
 
 export type CartItem = {
-  /** Stable key: photo + product variant + border + mounting. */
+  /** Stable key: photo + variant + border + mounting + crop. */
   key: string;
   photoId: string;
   photoNumber: string;
@@ -24,6 +24,10 @@ export type CartItem = {
   mountingPriceCents: number;
   unitPriceCents: number;
   quantity: number;
+  /** object-position X% for print crop preview (0–100). Optional for legacy cart rows. */
+  cropX?: number;
+  /** object-position Y% for print crop preview (0–100). Optional for legacy cart rows. */
+  cropY?: number;
 };
 
 type CartContextValue = {
@@ -39,8 +43,13 @@ type CartContextValue = {
 
 const STORAGE_KEY = "atelier-nord.cart.v2";
 
+function cropKeyPart(value: number | undefined): string {
+  // Legacy rows without crop stay compatible and still merge with each other.
+  return typeof value === "number" ? String(value) : "none";
+}
+
 function cartItemKey(item: Omit<CartItem, "key">): string {
-  return `${item.photoId}:${item.productVariantId}:${item.border ? "border" : "noborder"}:${item.mountingId}`;
+  return `${item.photoId}:${item.productVariantId}:${item.border ? "border" : "noborder"}:${item.mountingId}:${cropKeyPart(item.cropX)}:${cropKeyPart(item.cropY)}`;
 }
 
 function normalizeCartItem(raw: Partial<CartItem> & Pick<CartItem, "photoId" | "productVariantId" | "quantity" | "unitPriceCents">): CartItem | null {
@@ -69,6 +78,8 @@ function normalizeCartItem(raw: Partial<CartItem> & Pick<CartItem, "photoId" | "
     mountingPriceCents,
     unitPriceCents: raw.unitPriceCents,
     quantity: raw.quantity,
+    cropX: typeof raw.cropX === "number" ? raw.cropX : undefined,
+    cropY: typeof raw.cropY === "number" ? raw.cropY : undefined,
   };
   return { ...item, key: cartItemKey(item) };
 }

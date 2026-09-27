@@ -1,11 +1,25 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState } from "react";
 import { Minus, Plus, Trash2 } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
-import { useCart } from "@/lib/cart";
+import { PrintCropPreview } from "@/components/print-crop-preview";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useCart, type CartItem } from "@/lib/cart";
 import { formatCents } from "@/lib/money";
+import { printDimensionsFromLabel } from "@/lib/print-catalog";
+import { DEFAULT_CROP_X, DEFAULT_CROP_Y } from "@/lib/print-preview";
+
 export const Route = createFileRoute("/cart")({ component: CartPage });
+
 function CartPage() {
   const { items, subtotalCents, setQuantity, removeItem } = useCart();
+  const [previewItem, setPreviewItem] = useState<CartItem | null>(null);
+
   return (
     <main className="min-h-screen">
       <SiteHeader />
@@ -30,11 +44,18 @@ function CartPage() {
                   key={item.key}
                   className="grid grid-cols-[100px_1fr] gap-4 rounded-2xl border bg-card p-3 sm:grid-cols-[120px_1fr_auto]"
                 >
-                  <img
-                    src={item.photoUrl}
-                    alt={item.photoNumber}
-                    className="aspect-square h-full w-full rounded-xl object-cover"
-                  />
+                  <button
+                    type="button"
+                    onClick={() => setPreviewItem(item)}
+                    className="cursor-pointer overflow-hidden rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    aria-label={`View print preview for ${item.photoNumber}`}
+                  >
+                    <img
+                      src={item.photoUrl}
+                      alt={item.photoNumber}
+                      className="aspect-square h-full w-full object-cover"
+                    />
+                  </button>
                   <div className="py-2">
                     <p className="label-mono text-primary">{item.photoNumber}</p>
                     <h2 className="mt-2 font-display text-2xl">{item.productName}</h2>
@@ -103,6 +124,42 @@ function CartPage() {
           </div>
         )}
       </section>
+
+      <Dialog
+        open={previewItem != null}
+        onOpenChange={(open) => {
+          if (!open) setPreviewItem(null);
+        }}
+      >
+        <DialogContent className="max-w-2xl bg-background sm:rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-3xl font-normal tracking-tight">
+              {previewItem
+                ? `${previewItem.photoNumber} · ${previewItem.sizeLabel}`
+                : "Print preview"}
+            </DialogTitle>
+          </DialogHeader>
+          {previewItem && (
+            <div className="rounded-2xl bg-muted p-4 sm:p-6">
+              <CartItemPrintPreview item={previewItem} />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </main>
+  );
+}
+
+function CartItemPrintPreview({ item }: { item: CartItem }) {
+  const { width, height } = printDimensionsFromLabel(item.sizeLabel);
+  return (
+    <PrintCropPreview
+      photoUrl={item.photoUrl}
+      width={width}
+      height={height}
+      border={item.border}
+      cropX={item.cropX ?? DEFAULT_CROP_X}
+      cropY={item.cropY ?? DEFAULT_CROP_Y}
+    />
   );
 }
