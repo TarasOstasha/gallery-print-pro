@@ -6,14 +6,21 @@ export function SiteHeader({ dark = false }: { dark?: boolean }) {
   const { count } = useCart();
   return (
     <header
-      className={`flex h-20 items-center justify-between px-5 md:px-10 ${dark ? "text-white" : "text-foreground"}`}
+      className={`flex h-16 items-center justify-between px-5 md:px-10 ${dark ? "text-white" : "text-foreground"}`}
     >
-      <Link to="/" className="flex items-center" aria-label="Dynasty Pix home">
+      <Link
+        to="/"
+        className="flex flex-col items-start leading-none"
+        aria-label="Dynasty Pix — A Legacy Worth Remembering"
+      >
         <img
           src="/images/dynasty-pix-logo.png"
           alt="Dynasty Pix"
-          className="h-9 w-auto md:h-11"
+          className="h-8 w-auto md:h-9"
         />
+        <span className="-mt-1.5 font-display text-[10px] italic leading-none tracking-[0.04em] opacity-75 md:-mt-2 md:text-[11px]">
+          A Legacy Worth Remembering
+        </span>
       </Link>
       <nav className="flex items-center gap-5">
         <Link to="/print" className="label-mono hidden sm:block">

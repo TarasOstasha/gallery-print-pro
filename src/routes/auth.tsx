@@ -50,12 +50,19 @@ function AuthPage() {
   return (
     <main className="grid min-h-screen place-items-center px-5 py-16">
       <div className="w-full max-w-md">
-        <Link to="/" className="inline-flex items-center" aria-label="Dynasty Pix home">
+        <Link
+          to="/"
+          className="inline-flex flex-col items-start leading-none"
+          aria-label="Dynasty Pix — A Legacy Worth Remembering"
+        >
           <img
             src="/images/dynasty-pix-logo.png"
             alt="Dynasty Pix"
-            className="h-10 w-auto rounded-sm bg-black px-2 py-1"
+            className="h-9 w-auto md:h-10"
           />
+          <span className="-mt-1.5 font-display text-[11px] italic leading-none tracking-[0.04em] text-muted-foreground md:-mt-2">
+            A Legacy Worth Remembering
+          </span>
         </Link>
         <p className="label-mono mt-10 text-primary">Studio access</p>
         <h1 className="mt-3 font-display text-5xl">

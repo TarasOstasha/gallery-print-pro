@@ -12,8 +12,17 @@ function AdminLayout() {
   return (
     <main className="min-h-screen bg-[#111317] text-white">
       <header className="flex h-20 items-center justify-between border-b border-white/10 px-5 md:px-8">
-        <Link to="/" className="flex items-center gap-3" aria-label="Dynasty Pix home">
-          <img src="/images/dynasty-pix-logo.png" alt="Dynasty Pix" className="h-9 w-auto" />
+        <Link
+          to="/"
+          className="flex items-center gap-3"
+          aria-label="Dynasty Pix — A Legacy Worth Remembering"
+        >
+          <span className="flex flex-col items-start leading-none">
+            <img src="/images/dynasty-pix-logo.png" alt="Dynasty Pix" className="h-9 w-auto" />
+            <span className="-mt-1.5 font-display text-[11px] italic leading-none tracking-[0.04em] text-white/55">
+              A Legacy Worth Remembering
+            </span>
+          </span>
           <span className="font-sans text-xs text-white/35">/ Admin</span>
         </Link>
         <Link to="/" className="label-mono text-white/60">
