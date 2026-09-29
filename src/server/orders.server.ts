@@ -73,6 +73,8 @@ export type CreateOrderInput = {
     taxCents: number;
     totalCents: number;
   };
+  /** Browser origin used to build Stripe success/cancel URLs. */
+  checkoutOrigin?: string;
 };
 
 export type CreateOrderResult = {
@@ -83,6 +85,8 @@ export type CreateOrderResult = {
   taxCents: number;
   totalCents: number;
   persisted: "database" | "local";
+  /** Hosted Stripe Checkout URL — client should redirect here when present. */
+  checkoutUrl?: string | null;
 };
 
 function decodeBase64(data: string): Uint8Array {
@@ -481,7 +485,7 @@ export async function createOrderInDatabase(input: CreateOrderInput): Promise<Cr
         ${totalCents},
         ${input.fulfillment}::public.fulfillment_method,
         ${shippingMethodCode},
-        'paid'::public.payment_status,
+        'pending'::public.payment_status,
         'new'::public.order_status,
         'manual_studio',
         true,
@@ -490,6 +494,7 @@ export async function createOrderInDatabase(input: CreateOrderInput): Promise<Cr
       returning id, access_token
     `;
     const order = orderRows[0]!;
+    const accessToken = order.access_token == null ? "" : String(order.access_token);
 
     for (const line of lineItems) {
       const photoId = photoIdMap.get(line.clientPhotoId);
@@ -542,54 +547,50 @@ export async function createOrderInDatabase(input: CreateOrderInput): Promise<Cr
       `;
     }
 
-    await sql`
-      insert into public.payments (order_id, provider, amount_cents, status)
-      values (${order.id}::uuid, 'mock', ${totalCents}, 'paid'::public.payment_status)
-    `;
+    const origin =
+      input.checkoutOrigin?.trim() ||
+      process.env["APP_URL"]?.trim() ||
+      process.env["VITE_APP_URL"]?.trim() ||
+      "";
+    if (!origin) {
+      throw new OrderValidationError(
+        "Missing checkout origin for Stripe. Refresh the page and try again.",
+      );
+    }
 
-    const { getFulfillmentProvider } = await import("@/lib/fulfillment.server");
-    const fulfillment = await getFulfillmentProvider().submitOrder({
+    const { createOrderCheckoutSession } = await import("@/server/stripe.server");
+    const checkout = await createOrderCheckoutSession({
+      orderId: order.id,
       orderNumber,
-      fulfillmentMethod: input.fulfillment,
-      shippingMethodCode,
-      items: lineItems.map((line) => ({
-        photoId: photoIdMap.get(line.clientPhotoId)!,
-        photoNumber: line.photoNumber,
-        originalPath: null,
-        productName: line.productName,
-        sizeLabel: line.sizeLabel,
-        quantity: line.quantity,
-      })),
-      shipTo:
-        input.fulfillment === "shipping" && input.shippingAddress
-          ? {
-              name: `${input.customer.firstName} ${input.customer.lastName}`.trim(),
-              addressLine1: input.shippingAddress.address,
-              addressLine2: input.shippingAddress.apartment || null,
-              city: input.shippingAddress.city,
-              state: input.shippingAddress.state,
-              postalCode: input.shippingAddress.zip,
-              country: input.shippingAddress.country,
-            }
-          : null,
+      accessToken,
+      totalCents,
+      customerEmail: email,
+      origin,
     });
 
     await sql`
-      update public.orders
-      set fulfillment_provider = ${fulfillment.provider},
-          fulfillment_reference = ${fulfillment.reference},
-          updated_at = now()
-      where id = ${order.id}::uuid
+      insert into public.payments (order_id, provider, provider_payment_id, amount_cents, status)
+      values (
+        ${order.id}::uuid,
+        'stripe',
+        ${checkout.sessionId},
+        ${totalCents},
+        'pending'::public.payment_status
+      )
     `;
+
+    // Fulfillment + confirmation email run after Stripe marks the payment paid
+    // (webhook or confirmation-page session verify).
 
     return {
       orderNumber,
-      accessToken: order.access_token == null ? "" : String(order.access_token),
+      accessToken,
       subtotalCents,
       shippingCents,
       taxCents,
       totalCents,
       persisted: "database",
+      checkoutUrl: checkout.url,
     };
   } finally {
     await sql.end({ timeout: 5 });
@@ -774,5 +775,6 @@ export function buildLocalOrder(input: CreateOrderInput): CreateOrderResult {
     taxCents,
     totalCents,
     persisted: "local",
+    checkoutUrl: null,
   };
 }

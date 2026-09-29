@@ -4,7 +4,7 @@ import { Check } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { studio } from "@/lib/catalog";
 import { formatCents } from "@/lib/money";
-import { getOrderReceipt } from "@/orders.functions";
+import { confirmStripeCheckout, getOrderReceipt } from "@/orders.functions";
 
 export const Route = createFileRoute("/confirmation/$orderNumber")({ component: Confirmation });
 
@@ -50,6 +50,44 @@ function Confirmation() {
         stored = null;
       }
 
+      const sessionId = new URLSearchParams(window.location.search).get("session_id");
+      if (sessionId?.startsWith("cs_")) {
+        try {
+          const payment = await confirmStripeCheckout({ data: { sessionId } });
+          if (payment.accessToken) {
+            const nextStored: StoredOrder = {
+              number: payment.orderNumber || orderNumber,
+              accessToken: payment.accessToken,
+              fulfillment: stored?.fulfillment ?? "shipping",
+              total: stored?.total ?? 0,
+              ...(stored?.subtotal != null ? { subtotal: stored.subtotal } : {}),
+              ...(stored?.shipping != null ? { shipping: stored.shipping } : {}),
+              ...(stored?.tax != null ? { tax: stored.tax } : {}),
+              persisted: "database",
+              data: stored?.data ?? {},
+            };
+            sessionStorage.setItem(`order-${orderNumber}`, JSON.stringify(nextStored));
+            stored = nextStored;
+          }
+          if (payment.paymentStatus !== "paid") {
+            if (!cancelled) {
+              setConfirmed(null);
+              setLoadError(
+                payment.paymentStatus === "failed"
+                  ? "Payment was not completed."
+                  : "Payment is still processing. Refresh in a moment.",
+              );
+              setLoading(false);
+            }
+            return;
+          }
+          window.history.replaceState({}, "", `/confirmation/${encodeURIComponent(orderNumber)}`);
+        } catch (err) {
+          console.error("[confirmation] Stripe session confirm failed", err);
+          // Fall through to receipt lookup — webhook may have already marked paid.
+        }
+      }
+
       const accessToken = stored?.accessToken ? String(stored.accessToken).trim() : "";
       const isDevLocal = import.meta.env.DEV && stored?.persisted === "local";
       const isDatabaseOrder =
@@ -70,24 +108,25 @@ function Confirmation() {
             data: { orderNumber, accessToken },
           });
           if (!cancelled && receipt) {
-            setConfirmed({
+            const confirmedTotals: ConfirmedTotals = {
               orderNumber: receipt.orderNumber,
               totalCents: receipt.totalCents,
               fulfillment: receipt.fulfillmentMethod,
-              email: receipt.customerEmail ?? stored?.data?.email,
-              shippingName: receipt.shippingAddress
-                ? `${receipt.shippingAddress.firstName} ${receipt.shippingAddress.lastName}`.trim()
-                : undefined,
-              shippingLines: receipt.shippingAddress
-                ? [
-                    [receipt.shippingAddress.addressLine1, receipt.shippingAddress.addressLine2]
-                      .filter(Boolean)
-                      .join(", "),
-                    `${receipt.shippingAddress.city}, ${receipt.shippingAddress.state} ${receipt.shippingAddress.postalCode}`,
-                  ]
-                : undefined,
               fromDatabase: true,
-            });
+            };
+            const email = receipt.customerEmail ?? stored?.data?.["email"];
+            if (email) confirmedTotals.email = email;
+            if (receipt.shippingAddress) {
+              confirmedTotals.shippingName =
+                `${receipt.shippingAddress.firstName} ${receipt.shippingAddress.lastName}`.trim();
+              confirmedTotals.shippingLines = [
+                [receipt.shippingAddress.addressLine1, receipt.shippingAddress.addressLine2]
+                  .filter(Boolean)
+                  .join(", "),
+                `${receipt.shippingAddress.city}, ${receipt.shippingAddress.state} ${receipt.shippingAddress.postalCode}`,
+              ];
+            }
+            setConfirmed(confirmedTotals);
             setLoadError(null);
             setLoading(false);
             return;
@@ -126,18 +165,20 @@ function Confirmation() {
       // Development-only local orders may use session snapshot.
       if (isDevLocal && stored) {
         if (!cancelled) {
-          setConfirmed({
+          const localConfirmed: ConfirmedTotals = {
             orderNumber: stored.number || orderNumber,
             totalCents: stored.total,
             fulfillment: stored.fulfillment,
-            email: stored.data?.email,
-            shippingName: `${stored.data?.firstName ?? ""} ${stored.data?.lastName ?? ""}`.trim(),
+            shippingName: `${stored.data?.["firstName"] ?? ""} ${stored.data?.["lastName"] ?? ""}`.trim(),
             shippingLines: [
-              [stored.data?.address, stored.data?.apartment].filter(Boolean).join(", "),
-              `${stored.data?.city ?? ""}, ${stored.data?.state ?? ""} ${stored.data?.zip ?? ""}`.trim(),
+              [stored.data?.["address"], stored.data?.["apartment"]].filter(Boolean).join(", "),
+              `${stored.data?.["city"] ?? ""}, ${stored.data?.["state"] ?? ""} ${stored.data?.["zip"] ?? ""}`.trim(),
             ],
             fromDatabase: false,
-          });
+          };
+          const email = stored.data?.["email"];
+          if (email) localConfirmed.email = email;
+          setConfirmed(localConfirmed);
           setLoadError(null);
           setLoading(false);
         }

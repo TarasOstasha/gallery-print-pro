@@ -58,6 +58,19 @@ export const placeOrder = createServerFn({ method: "POST" })
     }
   });
 
+export const confirmStripeCheckout = createServerFn({ method: "POST" })
+  .validator((data: { sessionId: string }) => {
+    const sessionId = String(data?.sessionId ?? "").trim();
+    if (!sessionId.startsWith("cs_")) {
+      throw new Error("Invalid Stripe session.");
+    }
+    return { sessionId };
+  })
+  .handler(async ({ data }) => {
+    const { confirmCheckoutSession } = await import("@/server/stripe.server");
+    return confirmCheckoutSession(data.sessionId);
+  });
+
 export type OrderReceipt = {
   orderNumber: string;
   totalCents: number;

@@ -58,6 +58,14 @@ function Checkout() {
   const [policyOpen, setPolicyOpen] = useState(false);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("canceled") === "1") {
+      toast.message("Payment canceled. Start a new order when you’re ready.");
+      window.history.replaceState({}, "", "/checkout");
+    }
+  }, []);
+
+  useEffect(() => {
     void getGalleryData()
       .then((data) => {
         if (data.shippingMethods.length > 0) {
@@ -126,21 +134,22 @@ function Checkout() {
         fulfillment,
         shippingMethodCode: fulfillment === "shipping" ? shipping : null,
         termsAccepted,
+        checkoutOrigin: window.location.origin,
         customer: {
-          firstName: data.firstName!,
-          lastName: data.lastName!,
-          email: data.email!,
-          phone: data.phone ?? "",
+          firstName: data["firstName"]!,
+          lastName: data["lastName"]!,
+          email: data["email"]!,
+          phone: data["phone"] ?? "",
         },
         shippingAddress:
           fulfillment === "shipping"
             ? {
-                address: data.address!,
-                apartment: data.apartment,
-                city: data.city!,
-                state: data.state!,
-                zip: data.zip!,
-                country: data.country ?? "United States",
+                address: data["address"]!,
+                ...(data["apartment"] ? { apartment: data["apartment"] } : {}),
+                city: data["city"]!,
+                state: data["state"]!,
+                zip: data["zip"]!,
+                country: data["country"] ?? "United States",
               }
             : null,
         items: items.map((i) => ({
@@ -151,12 +160,12 @@ function Checkout() {
           quantity: i.quantity,
           border: Boolean(i.border),
           mountingId: i.mountingId || "print-only",
-          cropX: i.cropX,
-          cropY: i.cropY,
+          ...(typeof i.cropX === "number" ? { cropX: i.cropX } : {}),
+          ...(typeof i.cropY === "number" ? { cropY: i.cropY } : {}),
         })),
         photoFiles,
         totals: { subtotalCents, shippingCents: ship, taxCents: tax, totalCents: total },
-      };
+      } as const;
 
       const result = await placeOrder({ data: payload });
 
@@ -183,32 +192,37 @@ function Checkout() {
           shippingAddress: fulfillment === "shipping" ? data : null,
           items,
         });
-      } else {
-        // Preserve secure receipt credentials before navigation (sync sessionStorage).
-        const orderNumber = String(result.orderNumber);
-        const accessToken = String(result.accessToken);
-        sessionStorage.setItem(
-          `order-${orderNumber}`,
-          JSON.stringify({
-            number: orderNumber,
-            accessToken,
-            fulfillment,
-            total: result.totalCents,
-            subtotal: result.subtotalCents,
-            shipping: result.shippingCents,
-            tax: result.taxCents,
-            persisted: "database",
-            data,
-            items,
-          }),
-        );
         clear();
-        void nav({ to: "/confirmation/$orderNumber", params: { orderNumber } });
+        void nav({ to: "/confirmation/$orderNumber", params: { orderNumber: String(result.orderNumber) } });
         return;
       }
 
-      clear();
-      void nav({ to: "/confirmation/$orderNumber", params: { orderNumber: String(result.orderNumber) } });
+      // Preserve secure receipt credentials before Stripe redirect.
+      const orderNumber = String(result.orderNumber);
+      const accessToken = String(result.accessToken);
+      sessionStorage.setItem(
+        `order-${orderNumber}`,
+        JSON.stringify({
+          number: orderNumber,
+          accessToken,
+          fulfillment,
+          total: result.totalCents,
+          subtotal: result.subtotalCents,
+          shipping: result.shippingCents,
+          tax: result.taxCents,
+          persisted: "database",
+          data,
+          items,
+        }),
+      );
+
+      if (result.checkoutUrl) {
+        clear();
+        window.location.assign(result.checkoutUrl);
+        return;
+      }
+
+      toast.error("Payment could not be started. Try again.");
     } catch (err) {
       console.error(err);
       const message =
@@ -222,7 +236,9 @@ function Checkout() {
         message.includes("cart is empty") ||
         message.includes("Unavailable") ||
         message.includes("shipping method") ||
-        message.includes("delivery method");
+        message.includes("delivery method") ||
+        message.includes("Stripe") ||
+        message.includes("checkout origin");
       toast.error(known ? message : "Could not place order. Try again.");
       // Do not clear cart on failure.
     } finally {
@@ -367,8 +383,7 @@ function Checkout() {
             </div>
           </div>
           <div className="mt-6 rounded-xl border border-white/15 p-4 text-xs leading-5 text-white/60">
-            Payment is Stripe-ready. This preview safely creates a test order without collecting
-            card details.
+            You’ll complete payment securely on Stripe. We never store card numbers.
           </div>
           {!meetsMinimum && (
             <p className="mt-4 text-xs leading-5 text-amber-200">Minimum order is $20.00.</p>
@@ -401,7 +416,7 @@ function Checkout() {
             disabled={!canPlaceOrder}
             className="mt-5 w-full rounded-full bg-white px-5 py-4 font-sans text-xs uppercase tracking-[.2em] text-black disabled:opacity-60"
           >
-            {submitting ? "Placing order…" : "Place test order"}
+            {submitting ? "Redirecting to Stripe…" : "Pay with Stripe"}
           </button>
         </aside>
       </form>

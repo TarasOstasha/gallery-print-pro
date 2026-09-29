@@ -18,6 +18,7 @@ import { Route as PrintRouteImport } from './routes/print'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as ConfirmationOrderNumberRouteImport } from './routes/confirmation.$orderNumber'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin.index'
+import { Route as ApiStripeWebhookRouteImport } from './routes/api/stripe/webhook'
 import { Route as AuthenticatedAdminOrdersOrderNumberRouteImport } from './routes/_authenticated/admin.orders.$orderNumber'
 
 const IndexRoute = IndexRouteImport.update({
@@ -64,6 +65,11 @@ const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedAdminRoute,
 } as any)
+const ApiStripeWebhookRoute = ApiStripeWebhookRouteImport.update({
+  id: '/api/stripe/webhook',
+  path: '/api/stripe/webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedAdminOrdersOrderNumberRoute =
   AuthenticatedAdminOrdersOrderNumberRouteImport.update({
     id: '/orders/$orderNumber',
@@ -79,6 +85,7 @@ export interface FileRoutesByFullPath {
   '/print': typeof PrintRoute
   '/admin': typeof AuthenticatedAdminRouteWithChildren
   '/confirmation/$orderNumber': typeof ConfirmationOrderNumberRoute
+  '/api/stripe/webhook': typeof ApiStripeWebhookRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
   '/admin/orders/$orderNumber': typeof AuthenticatedAdminOrdersOrderNumberRoute
 }
@@ -89,6 +96,7 @@ export interface FileRoutesByTo {
   '/checkout': typeof CheckoutRoute
   '/print': typeof PrintRoute
   '/confirmation/$orderNumber': typeof ConfirmationOrderNumberRoute
+  '/api/stripe/webhook': typeof ApiStripeWebhookRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
   '/admin/orders/$orderNumber': typeof AuthenticatedAdminOrdersOrderNumberRoute
 }
@@ -102,6 +110,7 @@ export interface FileRoutesById {
   '/print': typeof PrintRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRouteWithChildren
   '/confirmation/$orderNumber': typeof ConfirmationOrderNumberRoute
+  '/api/stripe/webhook': typeof ApiStripeWebhookRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
   '/_authenticated/admin/orders/$orderNumber': typeof AuthenticatedAdminOrdersOrderNumberRoute
 }
@@ -115,6 +124,7 @@ export interface FileRouteTypes {
     | '/print'
     | '/admin'
     | '/confirmation/$orderNumber'
+    | '/api/stripe/webhook'
     | '/admin/'
     | '/admin/orders/$orderNumber'
   fileRoutesByTo: FileRoutesByTo
@@ -125,6 +135,7 @@ export interface FileRouteTypes {
     | '/checkout'
     | '/print'
     | '/confirmation/$orderNumber'
+    | '/api/stripe/webhook'
     | '/admin'
     | '/admin/orders/$orderNumber'
   id:
@@ -137,6 +148,7 @@ export interface FileRouteTypes {
     | '/print'
     | '/_authenticated/admin'
     | '/confirmation/$orderNumber'
+    | '/api/stripe/webhook'
     | '/_authenticated/admin/'
     | '/_authenticated/admin/orders/$orderNumber'
   fileRoutesById: FileRoutesById
@@ -149,6 +161,7 @@ export interface RootRouteChildren {
   CheckoutRoute: typeof CheckoutRoute
   PrintRoute: typeof PrintRoute
   ConfirmationOrderNumberRoute: typeof ConfirmationOrderNumberRoute
+  ApiStripeWebhookRoute: typeof ApiStripeWebhookRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -216,6 +229,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
       parentRoute: typeof AuthenticatedAdminRoute
     }
+    '/api/stripe/webhook': {
+      id: '/api/stripe/webhook'
+      path: '/api/stripe/webhook'
+      fullPath: '/api/stripe/webhook'
+      preLoaderRoute: typeof ApiStripeWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/admin/orders/$orderNumber': {
       id: '/_authenticated/admin/orders/$orderNumber'
       path: '/orders/$orderNumber'
@@ -260,6 +280,7 @@ const rootRouteChildren: RootRouteChildren = {
   CheckoutRoute: CheckoutRoute,
   PrintRoute: PrintRoute,
   ConfirmationOrderNumberRoute: ConfirmationOrderNumberRoute,
+  ApiStripeWebhookRoute: ApiStripeWebhookRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
