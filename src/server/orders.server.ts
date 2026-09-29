@@ -1,4 +1,9 @@
-import { createDb, describeServiceRoleKey } from "@/server/db.server";
+import {
+  createDb,
+  describeServiceRoleKey,
+  getSupabaseServiceRoleKey,
+} from "@/server/db.server";
+import { getServerEnv } from "@/server/env.server";
 import {
   FINE_ART_PRINT_ID,
   PHOTOGRAPHIC_PRINT_ID,
@@ -247,23 +252,23 @@ async function ensureProductVariantId(
 export async function createOrderInDatabase(input: CreateOrderInput): Promise<CreateOrderResult> {
   assertOrderRequestGates(input);
 
-  const keyStatus = describeServiceRoleKey(process.env.SUPABASE_SERVICE_ROLE_KEY);
+  const keyStatus = describeServiceRoleKey(getSupabaseServiceRoleKey());
   if (!keyStatus.ok) {
-    if (process.env.NODE_ENV !== "production") {
-      console.error("[createOrderInDatabase] Storage blocked: invalid service role key", {
-        present: keyStatus.present,
-        kind: keyStatus.kind,
-        supabaseUrlPresent: Boolean(process.env.SUPABASE_URL),
-        hint:
-          keyStatus.kind === "jwt:anon"
-            ? "SUPABASE_SERVICE_ROLE_KEY is currently an anon JWT. Replace it with the service_role secret (or sb_secret_…) from Supabase → Settings → API."
-            : "Set SUPABASE_SERVICE_ROLE_KEY to the service_role JWT or sb_secret_… key (not anon/publishable).",
-      });
-    } else {
-      console.error(
-        "[createOrderInDatabase] SUPABASE_SERVICE_ROLE_KEY is missing or not a service_role key",
-      );
-    }
+    console.error("[createOrderInDatabase] SUPABASE_SERVICE_ROLE_KEY rejected", {
+      present: keyStatus.present,
+      kind: keyStatus.kind,
+      supabaseUrlPresent: Boolean(getServerEnv("SUPABASE_URL")),
+      hint:
+        keyStatus.kind === "missing"
+          ? "SUPABASE_SERVICE_ROLE_KEY is not visible to the Worker runtime. Re-save it in host Variables/Secrets and redeploy."
+          : keyStatus.kind === "jwt:anon"
+            ? "Value is an anon JWT. Use the service_role secret or sb_secret_… key."
+            : keyStatus.kind === "sb_publishable_"
+              ? "Value is a publishable key. Use sb_secret_… or service_role JWT."
+              : keyStatus.kind === "non_jwt"
+                ? "Value does not look like sb_secret_… or a JWT (check for extra quotes)."
+                : "Set SUPABASE_SERVICE_ROLE_KEY to sb_secret_… or a service_role JWT.",
+    });
     throw new OrderValidationError(
       "Photo storage is temporarily unavailable. Please try again later.",
     );
@@ -618,7 +623,7 @@ async function upsertCustomerPhotoToStorage(
       byteLength: bytes.byteLength,
       storagePath,
       previewPath,
-      key: describeServiceRoleKey(process.env.SUPABASE_SERVICE_ROLE_KEY),
+      key: describeServiceRoleKey(getSupabaseServiceRoleKey()),
     });
   }
 

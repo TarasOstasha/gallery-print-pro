@@ -1,4 +1,4 @@
-import { createDb, isServiceRoleKey } from "@/server/db.server";
+import { createDb, getSupabaseServiceRoleKey, isServiceRoleKey } from "@/server/db.server";
 
 /** Same ID as customer-uploads event in orders.server.ts */
 export const CUSTOMER_UPLOAD_EVENT_ID = "33333333-3333-4333-8333-333333333333";
@@ -58,7 +58,7 @@ export function isCustomerStoragePath(path: string | null | undefined): boolean 
 }
 
 function requireServiceRole() {
-  if (!isServiceRoleKey(process.env.SUPABASE_SERVICE_ROLE_KEY)) {
+  if (!isServiceRoleKey(getSupabaseServiceRoleKey())) {
     throw new Error("Storage deletion requires a valid SUPABASE_SERVICE_ROLE_KEY");
   }
 }

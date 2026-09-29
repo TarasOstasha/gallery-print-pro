@@ -1,4 +1,5 @@
 import postgres from "postgres";
+import { getServerEnv } from "@/server/env.server";
 
 /** Returns true when SUPABASE_SERVICE_ROLE_KEY looks like a real service role secret. */
 export function isServiceRoleKey(value: string | undefined): boolean {
@@ -47,8 +48,12 @@ function decodeJwtPayload(segment: string): string {
   return Buffer.from(padded, "base64").toString("utf8");
 }
 
+export function getSupabaseServiceRoleKey(): string | undefined {
+  return getServerEnv("SUPABASE_SERVICE_ROLE_KEY");
+}
+
 export function getDatabaseUrl(): string {
-  const url = process.env["DATABASE_URL"] || process.env["LOVABLE_DB_MIGRATION_URL"];
+  const url = getServerEnv("DATABASE_URL") || getServerEnv("LOVABLE_DB_MIGRATION_URL");
   if (!url) throw new Error("Missing DATABASE_URL");
   return url;
 }
