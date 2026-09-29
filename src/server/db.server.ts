@@ -1,23 +1,4 @@
-import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import postgres from "postgres";
-
-const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-
-function loadEnv() {
-  try {
-    const raw = readFileSync(join(root, ".env"), "utf8");
-    for (const line of raw.split("\n")) {
-      const m = line.match(/^([A-Z0-9_]+)\s*=\s*"?([^"]*)"?\s*$/);
-      if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
-    }
-  } catch {
-    /* no .env */
-  }
-}
-
-loadEnv();
 
 /** Returns true when SUPABASE_SERVICE_ROLE_KEY looks like a real service role secret. */
 export function isServiceRoleKey(value: string | undefined): boolean {
@@ -41,11 +22,7 @@ export function describeServiceRoleKey(value: string | undefined): {
     return { ok: false, present: true, kind: "non_jwt" };
   }
   try {
-    const payload = JSON.parse(
-      Buffer.from(value.split(".")[1]!.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString(
-        "utf8",
-      ),
-    ) as { role?: string };
+    const payload = JSON.parse(decodeJwtPayload(value.split(".")[1]!)) as { role?: string };
     const role = payload.role ?? "unknown";
     return {
       ok: role === "service_role",
@@ -57,9 +34,22 @@ export function describeServiceRoleKey(value: string | undefined): {
   }
 }
 
+/** Workers-safe base64url → UTF-8 (no Node Buffer required). */
+function decodeJwtPayload(segment: string): string {
+  const normalized = segment.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+  if (typeof atob === "function") {
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  }
+  // Node / local fallback
+  return Buffer.from(padded, "base64").toString("utf8");
+}
+
 export function getDatabaseUrl(): string {
-  const url = process.env.DATABASE_URL || process.env.LOVABLE_DB_MIGRATION_URL;
-  if (!url) throw new Error("Missing DATABASE_URL in .env");
+  const url = process.env["DATABASE_URL"] || process.env["LOVABLE_DB_MIGRATION_URL"];
+  if (!url) throw new Error("Missing DATABASE_URL");
   return url;
 }
 
