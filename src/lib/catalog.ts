@@ -65,6 +65,8 @@ export const studio = {
   cityLine: "Paris, IDF 75011",
   country: "France",
   taxRate: 0.08,
+  instagramUrl: "https://www.instagram.com/dynastypix.studio",
+  facebookUrl: "https://www.facebook.com/DynastyPix.dp",
 };
 export const shippingMethods = [
   { code: "standard", name: "Standard Shipping", detail: "5–7 business days", priceCents: 995 },
